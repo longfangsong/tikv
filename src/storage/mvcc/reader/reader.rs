@@ -8,8 +8,32 @@ use engine_traits::{IterOptions, TableProperties, TablePropertiesCollection};
 use engine_traits::{CF_LOCK, CF_WRITE};
 use kvproto::kvrpcpb::IsolationLevel;
 use txn_types::{Key, Lock, TimeStamp, Value, Write, WriteRef, WriteType};
+use crate::storage::CfStatistics;
 
 const GC_MAX_ROW_VERSIONS_THRESHOLD: u64 = 100;
+
+pub struct ScanLocksIter<'a, S: Snapshot, F: Fn(&Lock) -> bool> {
+    lock: &'a mut CfStatistics,
+    cursor: &'a mut Cursor<S::Iter>,
+    filter_: F,
+}
+
+impl<'a, S: Snapshot, F: Fn(&Lock) -> bool> Iterator for ScanLocksIter<'a, S, F> {
+    type Item = (Key, Lock);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // todo: handle error here
+        while self.cursor.valid().ok()? {
+            let key = Key::from_encoded_slice(self.cursor.key(&mut self.lock));
+            let lock = Lock::parse(self.cursor.value(&mut self.lock)).ok()?;
+            if (self.filter_)(&lock) {
+                return Some((key, lock));
+            }
+            self.cursor.next(&mut self.lock);
+        }
+        return None;
+    }
+}
 
 pub struct MvccReader<S: Snapshot> {
     snapshot: S,
@@ -292,8 +316,8 @@ impl<S: Snapshot> MvccReader<S> {
         filter: F,
         limit: usize,
     ) -> Result<(Vec<(Key, Lock)>, bool)>
-    where
-        F: Fn(&Lock) -> bool,
+        where
+            F: Fn(&Lock) -> bool,
     {
         self.create_lock_cursor()?;
         let cursor = self.lock_cursor.as_mut().unwrap();
@@ -319,6 +343,30 @@ impl<S: Snapshot> MvccReader<S> {
         self.statistics.lock.processed += locks.len();
         // If we reach here, `cursor.valid()` is `false`, so there MUST be no more locks.
         Ok((locks, false))
+    }
+
+    pub fn scan_locks_iter<F: Fn(&Lock) -> bool>(
+        &mut self,
+        start: Option<&Key>,
+        filter: F,
+    ) -> ScanLocksIter<S, F> {
+        // todo: handle error
+        self.create_lock_cursor().unwrap();
+        let cursor = self.lock_cursor.as_mut().unwrap();
+        let ok = match start {
+            // todo: handle error
+            Some(ref x) => cursor.seek(x, &mut self.statistics.lock).unwrap(),
+            None => cursor.seek_to_first(&mut self.statistics.lock),
+        };
+        if !ok {
+            // todo
+            unimplemented!();
+        }
+        return ScanLocksIter {
+            lock: &mut self.statistics.lock,
+            cursor,
+            filter_: filter,
+        };
     }
 
     pub fn scan_keys(
@@ -532,7 +580,7 @@ mod tests {
                 TimeStamp::default(),
                 false,
             )
-            .unwrap();
+                .unwrap();
             self.write(txn.into_modifies());
         }
 
@@ -555,7 +603,7 @@ mod tests {
                 false,
                 TimeStamp::zero(),
             )
-            .unwrap();
+                .unwrap();
             self.write(txn.into_modifies());
         }
 
@@ -1354,23 +1402,23 @@ mod tests {
                 12.into(),
             ),
         ]
-        .into_iter()
-        .map(|(k, lock_type, short_value, ts, for_update_ts)| {
-            (
-                Key::from_raw(&k),
-                Lock::new(
-                    lock_type,
-                    b"k1".to_vec(),
-                    ts,
-                    0,
-                    short_value,
-                    for_update_ts,
-                    0,
-                    TimeStamp::zero(),
-                ),
-            )
-        })
-        .collect();
+            .into_iter()
+            .map(|(k, lock_type, short_value, ts, for_update_ts)| {
+                (
+                    Key::from_raw(&k),
+                    Lock::new(
+                        lock_type,
+                        b"k1".to_vec(),
+                        ts,
+                        0,
+                        short_value,
+                        for_update_ts,
+                        0,
+                        TimeStamp::zero(),
+                    ),
+                )
+            })
+            .collect();
 
         // Creates a reader and scan locks,
         let check_scan_lock =

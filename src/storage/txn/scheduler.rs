@@ -321,9 +321,7 @@ impl<E: Engine, L: LockManager, P: PdClient + 'static> Scheduler<E, L, P> {
         let task = Task::new(cid, cmd);
         // TODO: enqueue_task should return an reference of the tctx.
         self.inner.enqueue_task(task, callback);
-        if self.inner.acquire_lock(cid) {
-            self.get_snapshot(cid);
-        }
+        self.try_to_wake_up(cid);
         SCHED_STAGE_COUNTER_VEC.get(tag).new.inc();
         SCHED_COMMANDS_PRI_COUNTER_VEC_STATIC
             .get(priority_tag)
@@ -594,7 +592,9 @@ impl<E: Engine, L: LockManager, P: PdClient + 'static> Scheduler<E, L, P> {
         let pipelined = self.inner.pipelined_pessimistic_lock && task.cmd.can_be_pipelined();
 
         let context = WriteContext {
+            cid,
             lock_mgr: &self.inner.lock_mgr,
+            latches: &self.inner.latches,
             pd_client: self.inner.pd_client.clone(),
             extra_op: task.extra_op,
             statistics,
@@ -605,12 +605,12 @@ impl<E: Engine, L: LockManager, P: PdClient + 'static> Scheduler<E, L, P> {
             // Initiates an async write operation on the storage engine, there'll be a `WriteFinished`
             // message when it finishes.
             Ok(WriteResult {
-                ctx,
-                to_be_write,
-                rows,
-                pr,
-                lock_info,
-            }) => {
+                   ctx,
+                   to_be_write,
+                   rows,
+                   pr,
+                   lock_info,
+               }) => {
                 SCHED_STAGE_COUNTER_VEC.get(tag).write.inc();
 
                 if let Some((lock, is_first_lock, wait_timeout)) = lock_info {
@@ -714,7 +714,7 @@ mod tests {
                 b"k".to_vec(),
                 10.into(),
             )
-            .into(),
+                .into(),
             commands::AcquirePessimisticLock::new(
                 vec![(Key::from_raw(b"k"), false)],
                 b"k".to_vec(),
@@ -727,21 +727,21 @@ mod tests {
                 TimeStamp::default(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Commit::new(
                 vec![Key::from_raw(b"k")],
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Cleanup::new(
                 Key::from_raw(b"k"),
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Rollback::new(vec![Key::from_raw(b"k")], 10.into(), Context::default())
                 .into(),
             commands::PessimisticRollback::new(
@@ -750,7 +750,7 @@ mod tests {
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::ResolveLock::new(
                 temp_map,
                 None,
@@ -769,14 +769,14 @@ mod tests {
                 )],
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::ResolveLockLite::new(
                 10.into(),
                 TimeStamp::zero(),
                 vec![Key::from_raw(b"k")],
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::TxnHeartBeat::new(Key::from_raw(b"k"), 10.into(), 100, Context::default())
                 .into(),
         ];

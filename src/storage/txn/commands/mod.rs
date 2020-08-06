@@ -15,6 +15,7 @@ mod pessimistic_rollback;
 mod prewrite;
 mod prewrite_pessimistic;
 mod resolve_lock;
+mod resolve_lock_scan;
 mod resolve_lock_lite;
 mod resolve_lock_readphase;
 mod rollback;
@@ -38,6 +39,7 @@ pub use resolve_lock_readphase::ResolveLockReadPhase;
 pub use rollback::Rollback;
 pub use scan_lock::ScanLock;
 pub use txn_heart_beat::TxnHeartBeat;
+pub use resolve_lock_scan::ResolveLockScan;
 
 #[cfg(test)]
 pub(crate) use prewrite::FORWARD_MIN_MUTATIONS_NUM;
@@ -87,6 +89,7 @@ pub enum Command {
     ScanLock(ScanLock),
     ResolveLockReadPhase(ResolveLockReadPhase),
     ResolveLock(ResolveLock),
+    ResolveLockScan(ResolveLockScan),
     ResolveLockLite(ResolveLockLite),
     Pause(Pause),
     MvccByKey(MvccByKey),
@@ -426,6 +429,8 @@ pub trait CommandExt: Display {
 }
 
 pub struct WriteContext<'a, L: LockManager, P: PdClient + 'static> {
+    pub cid: u64,
+    pub latches: &'a Latches,
     pub lock_mgr: &'a L,
     pub pd_client: Arc<P>,
     pub extra_op: ExtraOp,
@@ -451,6 +456,7 @@ impl Command {
             Command::ScanLock(t) => t,
             Command::ResolveLockReadPhase(t) => t,
             Command::ResolveLock(t) => t,
+            Command::ResolveLockScan(t) => t,
             Command::ResolveLockLite(t) => t,
             Command::Pause(t) => t,
             Command::MvccByKey(t) => t,
@@ -473,6 +479,7 @@ impl Command {
             Command::ScanLock(t) => t,
             Command::ResolveLockReadPhase(t) => t,
             Command::ResolveLock(t) => t,
+            Command::ResolveLockScan(t) => t,
             Command::ResolveLockLite(t) => t,
             Command::Pause(t) => t,
             Command::MvccByKey(t) => t,
@@ -508,6 +515,7 @@ impl Command {
             Command::Rollback(t) => t.process_write(snapshot, context),
             Command::PessimisticRollback(t) => t.process_write(snapshot, context),
             Command::ResolveLock(t) => t.process_write(snapshot, context),
+            Command::ResolveLockScan(t) => t.process_write(snapshot, context),
             Command::ResolveLockLite(t) => t.process_write(snapshot, context),
             Command::TxnHeartBeat(t) => t.process_write(snapshot, context),
             Command::CheckTxnStatus(t) => t.process_write(snapshot, context),
@@ -581,8 +589,6 @@ pub trait ReadCommand<S: Snapshot>: CommandExt {
     fn process_read(self, snapshot: S, statistics: &mut Statistics) -> Result<ProcessResult>;
 }
 
-pub(super) trait WriteCommand<S: Snapshot, L: LockManager, P: PdClient + 'static>:
-    CommandExt
-{
+pub(super) trait WriteCommand<S: Snapshot, L: LockManager, P: PdClient + 'static>: CommandExt {
     fn process_write(self, snapshot: S, context: WriteContext<'_, L, P>) -> Result<WriteResult>;
 }
