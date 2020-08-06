@@ -4013,8 +4013,6 @@ mod tests {
 
     #[test]
     fn test_resolve_lock() {
-        use crate::storage::txn::RESOLVE_LOCK_BATCH_SIZE;
-
         let storage = TestStorageBuilder::new(DummyLockManager {})
             .build()
             .unwrap();
@@ -4063,15 +4061,7 @@ mod tests {
 
         // We should be able to resolve all locks for transaction ts=100 when there are this
         // many locks.
-        let scanned_locks_coll = vec![
-            1,
-            RESOLVE_LOCK_BATCH_SIZE,
-            RESOLVE_LOCK_BATCH_SIZE - 1,
-            RESOLVE_LOCK_BATCH_SIZE + 1,
-            RESOLVE_LOCK_BATCH_SIZE * 2,
-            RESOLVE_LOCK_BATCH_SIZE * 2 - 1,
-            RESOLVE_LOCK_BATCH_SIZE * 2 + 1,
-        ];
+        let scanned_locks_coll = vec![1, 127, 512, 1024];
 
         let is_rollback_coll = vec![
             false, // commit

@@ -693,7 +693,7 @@ impl<E: Engine, L: LockManager, P: PdClient + 'static> Clone for Scheduler<E, L,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::mvcc::{self, Mutation};
+    use crate::storage::mvcc::Mutation;
     use crate::storage::txn::{commands, latch::*};
     use kvproto::kvrpcpb::Context;
     use txn_types::Key;
@@ -704,7 +704,6 @@ mod tests {
         temp_map.insert(10.into(), 20.into());
         let readonly_cmds: Vec<Command> = vec![
             commands::ScanLock::new(5.into(), None, 0, Context::default()).into(),
-            commands::ResolveLockReadPhase::new(temp_map.clone(), None, Context::default()).into(),
             commands::MvccByKey::new(Key::from_raw(b"k"), Context::default()).into(),
             commands::MvccByStartTs::new(25.into(), Context::default()).into(),
         ];
@@ -751,25 +750,7 @@ mod tests {
                 Context::default(),
             )
             .into(),
-            commands::ResolveLock::new(
-                temp_map,
-                None,
-                vec![(
-                    Key::from_raw(b"k"),
-                    mvcc::Lock::new(
-                        mvcc::LockType::Put,
-                        b"k".to_vec(),
-                        10.into(),
-                        20,
-                        None,
-                        TimeStamp::zero(),
-                        0,
-                        TimeStamp::zero(),
-                    ),
-                )],
-                Context::default(),
-            )
-            .into(),
+            commands::ResolveLockScan::new(temp_map, None, Context::default()).into(),
             commands::ResolveLockLite::new(
                 10.into(),
                 TimeStamp::zero(),

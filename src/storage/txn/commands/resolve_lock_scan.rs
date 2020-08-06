@@ -73,7 +73,7 @@ impl<S: Snapshot, L: LockManager, P: PdClient + 'static> WriteCommand<S, L, P> f
             !ctx.get_not_fill_cache(),
             context.pd_client,
         );
-        let mut iter = reader.scan_locks_iter(self.first_scan_key.as_ref(), |lock| {
+        let iter = reader.scan_locks_iter(self.first_scan_key.as_ref(), |lock| {
             txn_status.contains_key(&lock.ts)
         });
         let mut rows = 0;
