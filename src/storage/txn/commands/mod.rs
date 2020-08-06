@@ -15,9 +15,9 @@ mod pessimistic_rollback;
 mod prewrite;
 mod prewrite_pessimistic;
 mod resolve_lock;
-mod resolve_lock_scan;
 mod resolve_lock_lite;
 mod resolve_lock_readphase;
+mod resolve_lock_scan;
 mod rollback;
 mod scan_lock;
 mod txn_heart_beat;
@@ -36,10 +36,10 @@ pub use prewrite_pessimistic::PrewritePessimistic;
 pub use resolve_lock::ResolveLock;
 pub use resolve_lock_lite::ResolveLockLite;
 pub use resolve_lock_readphase::ResolveLockReadPhase;
+pub use resolve_lock_scan::ResolveLockScan;
 pub use rollback::Rollback;
 pub use scan_lock::ScanLock;
 pub use txn_heart_beat::TxnHeartBeat;
-pub use resolve_lock_scan::ResolveLockScan;
 
 #[cfg(test)]
 pub(crate) use prewrite::FORWARD_MIN_MUTATIONS_NUM;
@@ -305,7 +305,7 @@ impl From<ResolveLockRequest> for TypedCommand<()> {
         };
 
         if resolve_keys.is_empty() {
-            ResolveLockReadPhase::new(txn_status, None, req.take_context())
+            ResolveLockScan::new(txn_status, None, req.take_context())
         } else {
             let start_ts: TimeStamp = req.get_start_version().into();
             assert!(!start_ts.is_zero());
@@ -589,6 +589,8 @@ pub trait ReadCommand<S: Snapshot>: CommandExt {
     fn process_read(self, snapshot: S, statistics: &mut Statistics) -> Result<ProcessResult>;
 }
 
-pub(super) trait WriteCommand<S: Snapshot, L: LockManager, P: PdClient + 'static>: CommandExt {
+pub(super) trait WriteCommand<S: Snapshot, L: LockManager, P: PdClient + 'static>:
+    CommandExt
+{
     fn process_write(self, snapshot: S, context: WriteContext<'_, L, P>) -> Result<WriteResult>;
 }

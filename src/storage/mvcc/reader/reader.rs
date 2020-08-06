@@ -2,13 +2,13 @@
 
 use crate::storage::kv::{Cursor, ScanMode, Snapshot, Statistics};
 use crate::storage::mvcc::{default_not_found_error, Result};
+use crate::storage::CfStatistics;
 use engine_rocks::properties::MvccProperties;
 use engine_rocks::RocksTablePropertiesCollection;
 use engine_traits::{IterOptions, TableProperties, TablePropertiesCollection};
 use engine_traits::{CF_LOCK, CF_WRITE};
 use kvproto::kvrpcpb::IsolationLevel;
 use txn_types::{Key, Lock, TimeStamp, Value, Write, WriteRef, WriteType};
-use crate::storage::CfStatistics;
 
 const GC_MAX_ROW_VERSIONS_THRESHOLD: u64 = 100;
 
@@ -316,8 +316,8 @@ impl<S: Snapshot> MvccReader<S> {
         filter: F,
         limit: usize,
     ) -> Result<(Vec<(Key, Lock)>, bool)>
-        where
-            F: Fn(&Lock) -> bool,
+    where
+        F: Fn(&Lock) -> bool,
     {
         self.create_lock_cursor()?;
         let cursor = self.lock_cursor.as_mut().unwrap();
@@ -580,7 +580,7 @@ mod tests {
                 TimeStamp::default(),
                 false,
             )
-                .unwrap();
+            .unwrap();
             self.write(txn.into_modifies());
         }
 
@@ -603,7 +603,7 @@ mod tests {
                 false,
                 TimeStamp::zero(),
             )
-                .unwrap();
+            .unwrap();
             self.write(txn.into_modifies());
         }
 
@@ -1402,23 +1402,23 @@ mod tests {
                 12.into(),
             ),
         ]
-            .into_iter()
-            .map(|(k, lock_type, short_value, ts, for_update_ts)| {
-                (
-                    Key::from_raw(&k),
-                    Lock::new(
-                        lock_type,
-                        b"k1".to_vec(),
-                        ts,
-                        0,
-                        short_value,
-                        for_update_ts,
-                        0,
-                        TimeStamp::zero(),
-                    ),
-                )
-            })
-            .collect();
+        .into_iter()
+        .map(|(k, lock_type, short_value, ts, for_update_ts)| {
+            (
+                Key::from_raw(&k),
+                Lock::new(
+                    lock_type,
+                    b"k1".to_vec(),
+                    ts,
+                    0,
+                    short_value,
+                    for_update_ts,
+                    0,
+                    TimeStamp::zero(),
+                ),
+            )
+        })
+        .collect();
 
         // Creates a reader and scan locks,
         let check_scan_lock =

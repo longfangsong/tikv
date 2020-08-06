@@ -248,6 +248,7 @@ mod tests {
     use crate::storage::txn::commands::{
         Commit, Prewrite, Rollback, WriteContext, FORWARD_MIN_MUTATIONS_NUM,
     };
+    use crate::storage::txn::latch::Latches;
     use crate::storage::txn::LockInfo;
     use crate::storage::txn::{Error, ErrorInner, Result};
     use crate::storage::DummyLockManager;
@@ -421,6 +422,8 @@ mod tests {
         let snap = engine.snapshot(&ctx)?;
         let cmd = Prewrite::with_defaults(mutations, primary, TimeStamp::from(start_ts));
         let context = WriteContext {
+            cid: 0,
+            latches: &Latches::new(0),
             lock_mgr: &DummyLockManager {},
             pd_client: Arc::new(DummyPdClient::new()),
             extra_op: ExtraOp::Noop,
@@ -461,6 +464,8 @@ mod tests {
         );
 
         let context = WriteContext {
+            cid: 0,
+            latches: &Latches::new(0),
             lock_mgr: &DummyLockManager {},
             pd_client: Arc::new(DummyPdClient::new()),
             extra_op: ExtraOp::Noop,
@@ -484,6 +489,8 @@ mod tests {
         let snap = engine.snapshot(&ctx)?;
         let cmd = Rollback::new(keys, TimeStamp::from(start_ts), ctx);
         let context = WriteContext {
+            cid: 0,
+            latches: &Latches::new(0),
             lock_mgr: &DummyLockManager {},
             pd_client: Arc::new(DummyPdClient::new()),
             extra_op: ExtraOp::Noop,

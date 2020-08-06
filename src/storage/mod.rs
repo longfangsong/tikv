@@ -4108,7 +4108,7 @@ mod tests {
                 );
                 storage
                     .sched_txn_command(
-                        commands::ResolveLockReadPhase::new(txn_status, None, Context::default()),
+                        commands::ResolveLockScan::new(txn_status, None, Context::default()),
                         expect_ok_callback(tx.clone(), 0),
                     )
                     .unwrap();
@@ -5187,7 +5187,7 @@ mod tests {
         txn_status.insert(TimeStamp::new(75), TimeStamp::new(76));
         storage
             .sched_txn_command(
-                commands::ResolveLockReadPhase::new(txn_status, None, Context::default()),
+                commands::ResolveLockScan::new(txn_status, None, Context::default()),
                 expect_ok_callback(tx.clone(), 0),
             )
             .unwrap();

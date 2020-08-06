@@ -605,12 +605,12 @@ impl<E: Engine, L: LockManager, P: PdClient + 'static> Scheduler<E, L, P> {
             // Initiates an async write operation on the storage engine, there'll be a `WriteFinished`
             // message when it finishes.
             Ok(WriteResult {
-                   ctx,
-                   to_be_write,
-                   rows,
-                   pr,
-                   lock_info,
-               }) => {
+                ctx,
+                to_be_write,
+                rows,
+                pr,
+                lock_info,
+            }) => {
                 SCHED_STAGE_COUNTER_VEC.get(tag).write.inc();
 
                 if let Some((lock, is_first_lock, wait_timeout)) = lock_info {
@@ -714,7 +714,7 @@ mod tests {
                 b"k".to_vec(),
                 10.into(),
             )
-                .into(),
+            .into(),
             commands::AcquirePessimisticLock::new(
                 vec![(Key::from_raw(b"k"), false)],
                 b"k".to_vec(),
@@ -727,21 +727,21 @@ mod tests {
                 TimeStamp::default(),
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::Commit::new(
                 vec![Key::from_raw(b"k")],
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::Cleanup::new(
                 Key::from_raw(b"k"),
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::Rollback::new(vec![Key::from_raw(b"k")], 10.into(), Context::default())
                 .into(),
             commands::PessimisticRollback::new(
@@ -750,7 +750,7 @@ mod tests {
                 20.into(),
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::ResolveLock::new(
                 temp_map,
                 None,
@@ -769,14 +769,14 @@ mod tests {
                 )],
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::ResolveLockLite::new(
                 10.into(),
                 TimeStamp::zero(),
                 vec![Key::from_raw(b"k")],
                 Context::default(),
             )
-                .into(),
+            .into(),
             commands::TxnHeartBeat::new(Key::from_raw(b"k"), 10.into(), 100, Context::default())
                 .into(),
         ];

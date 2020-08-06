@@ -2,13 +2,12 @@
 
 use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
-use crate::storage::mvcc::{MvccTxn, MAX_TXN_WRITE_SIZE, MvccReader};
+use crate::storage::mvcc::{MvccReader, MvccTxn, MAX_TXN_WRITE_SIZE};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, TypedCommand, WriteCommand,
-    WriteContext, WriteResult,
+    Command, CommandExt, ReleasedLocks, TypedCommand, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::{Error, ErrorInner, Result};
-use crate::storage::{ProcessResult, Snapshot, ScanMode};
+use crate::storage::{ProcessResult, ScanMode, Snapshot};
 use pd_client::PdClient;
 use tikv_util::collections::HashMap;
 use txn_types::{Key, TimeStamp};
@@ -40,8 +39,7 @@ command! {
             /// `txn_status`. `"k4"` will not be affected either, because it doesn't have a non-committed
             /// version.
             txn_status: HashMap<TimeStamp, TimeStamp>,
-            scan_key: Option<Key>,
-            // key_locks: Vec<(Key, Lock)>,
+            first_scan_key: Option<Key>,
         }
 }
 
@@ -55,21 +53,13 @@ impl CommandExt for ResolveLockScan {
     fn write_bytes(&self) -> usize {
         // todo: how can I calculate this?
         0
-        // self.key_locks
-        //     .iter()
-        //     .map(|(key, _)| key.as_encoded().len())
-        //     .sum()
     }
 
-    gen_lock!(empty);
+    gen_lock!(first_scan_key: multiple); // it is not multiple actually, but Option is also IntoIterator
 }
 
 impl<S: Snapshot, L: LockManager, P: PdClient + 'static> WriteCommand<S, L, P> for ResolveLockScan {
-    fn process_write(
-        self,
-        snapshot: S,
-        context: WriteContext<'_, L, P>,
-    ) -> Result<WriteResult> {
+    fn process_write(self, snapshot: S, context: WriteContext<'_, L, P>) -> Result<WriteResult> {
         let (ctx, txn_status) = (self.ctx, self.txn_status);
         let mut reader = MvccReader::new(
             snapshot.clone(),
@@ -83,15 +73,14 @@ impl<S: Snapshot, L: LockManager, P: PdClient + 'static> WriteCommand<S, L, P> f
             !ctx.get_not_fill_cache(),
             context.pd_client,
         );
-        let mut iter = reader.scan_locks_iter(
-            self.scan_key.as_ref(),
-            |lock| txn_status.contains_key(&lock.ts),
-        );
+        let mut iter = reader.scan_locks_iter(self.first_scan_key.as_ref(), |lock| {
+            txn_status.contains_key(&lock.ts)
+        });
         let mut rows = 0;
-        let mut scan_key = None;
+        let mut next_first_scan_key = None;
         for (current_key, current_lock) in iter {
             if txn.write_size() >= MAX_TXN_WRITE_SIZE {
-                scan_key = Some((current_key, current_lock));
+                next_first_scan_key = Some((current_key, current_lock));
                 break;
             }
             let mut lock = context.latches.gen_lock(std::iter::once(&current_key));
@@ -116,16 +105,22 @@ impl<S: Snapshot, L: LockManager, P: PdClient + 'static> WriteCommand<S, L, P> f
                 ReleasedLocks::new(current_lock.ts, commit_ts).wake_up(context.lock_mgr);
                 context.latches.release(&mut lock, context.cid);
             } else {
-                // todo: when latch is occupied, wait for it
-                // context.lock_mgr.wait_for()
+                // else "spawn" another `ResolveLockScan` command which will wait for this (key, lock) group
+                next_first_scan_key = Some((current_key, current_lock));
+                break;
             }
         }
 
-        let pr = if scan_key.is_none() {
+        let pr = if next_first_scan_key.is_none() {
             ProcessResult::Res
         } else {
             ProcessResult::NextCommand {
-                cmd: ResolveLockScan::new(txn_status.clone(), scan_key.map(|it| it.0.clone()).take(), ctx.clone()).into(),
+                cmd: ResolveLockScan::new(
+                    txn_status.clone(),
+                    next_first_scan_key.map(|it| it.0.clone()).take(),
+                    ctx.clone(),
+                )
+                .into(),
             }
         };
 
