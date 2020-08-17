@@ -1127,21 +1127,6 @@ pub mod tests {
         assert!(txn.rollback(Key::from_raw(key)).is_err());
     }
 
-    pub fn must_cleanup<E: Engine>(
-        engine: &E,
-        key: &[u8],
-        start_ts: impl Into<TimeStamp>,
-        current_ts: impl Into<TimeStamp>,
-    ) {
-        let ctx = Context::default();
-        let snapshot = engine.snapshot(&ctx).unwrap();
-        let current_ts = current_ts.into();
-        let cm = ConcurrencyManager::new(current_ts);
-        let mut txn = MvccTxn::new(snapshot, start_ts.into(), true, cm);
-        txn.cleanup(Key::from_raw(key), current_ts, true).unwrap();
-        write(engine, &ctx, txn.into_modifies());
-    }
-
     pub fn must_cleanup_err<E: Engine>(
         engine: &E,
         key: &[u8],

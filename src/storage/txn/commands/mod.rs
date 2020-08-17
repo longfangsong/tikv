@@ -345,6 +345,16 @@ pub struct WriteResult {
     pub lock_guards: Vec<KeyHandleGuard>,
 }
 
+impl Debug for WriteResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "WriteResult {{rows: {:?}, pr: {:?}}}",
+            self.rows, self.pr
+        )
+    }
+}
+
 impl ReleasedLocks {
     pub fn new(start_ts: TimeStamp, commit_ts: TimeStamp) -> Self {
         Self {

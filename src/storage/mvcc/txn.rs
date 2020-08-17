@@ -54,7 +54,7 @@ pub enum MissingLockAction {
 }
 
 impl MissingLockAction {
-    fn rollback_protect(protect_rollback: bool) -> MissingLockAction {
+    pub(crate) fn rollback_protect(protect_rollback: bool) -> MissingLockAction {
         if protect_rollback {
             MissingLockAction::ProtectedRollback
         } else {
@@ -1490,7 +1490,7 @@ mod tests {
         assert!(!w1.has_overlapped_rollback);
         assert!(!w2.has_overlapped_rollback);
 
-        must_cleanup(&engine, k1, 20, 0);
+        cleanup::tests::must_success(&engine, k1, 20, 0);
         must_rollback(&engine, k2, 20);
 
         let w1r = must_written(&engine, k1, 10, 20, WriteType::Put);
@@ -1502,52 +1502,6 @@ mod tests {
         // Rollback is invoked on secondaries, so the rollback is not protected and overlapped_rollback
         // won't be set.
         assert_eq!(w2r, w2);
-    }
-
-    #[test]
-    fn test_cleanup() {
-        // Cleanup's logic is mostly similar to rollback, except the TTL check. Tests that not
-        // related to TTL check should be covered by other test cases.
-        let engine = TestEngineBuilder::new().build().unwrap();
-
-        // Shorthand for composing ts.
-        let ts = TimeStamp::compose;
-
-        let (k, v) = (b"k", b"v");
-
-        must_prewrite_put(&engine, k, v, k, ts(10, 0));
-        must_locked(&engine, k, ts(10, 0));
-        txn_heart_beat::tests::must_success(&engine, k, ts(10, 0), 100, 100);
-        // Check the last txn_heart_beat has set the lock's TTL to 100.
-        txn_heart_beat::tests::must_success(&engine, k, ts(10, 0), 90, 100);
-
-        // TTL not expired. Do nothing but returns an error.
-        must_cleanup_err(&engine, k, ts(10, 0), ts(20, 0));
-        must_locked(&engine, k, ts(10, 0));
-
-        // Try to cleanup another transaction's lock. Does nothing.
-        must_cleanup(&engine, k, ts(10, 1), ts(120, 0));
-        // If there is no exisiting lock when cleanup, it may be a pessimistic transaction,
-        // so the rollback should be protected.
-        must_get_rollback_protected(&engine, k, ts(10, 1), true);
-        must_locked(&engine, k, ts(10, 0));
-
-        // TTL expired. The lock should be removed.
-        must_cleanup(&engine, k, ts(10, 0), ts(120, 0));
-        must_unlocked(&engine, k);
-        // Rollbacks of optimistic transactions needn't be protected
-        must_get_rollback_protected(&engine, k, ts(10, 0), false);
-        must_get_rollback_ts(&engine, k, ts(10, 0));
-
-        // Rollbacks of primary keys in pessimistic transactions should be protected
-        must_acquire_pessimistic_lock(&engine, k, k, ts(11, 1), ts(12, 1));
-        must_cleanup(&engine, k, ts(11, 1), ts(120, 0));
-        must_get_rollback_protected(&engine, k, ts(11, 1), true);
-
-        must_acquire_pessimistic_lock(&engine, k, k, ts(13, 1), ts(14, 1));
-        must_pessimistic_prewrite_put(&engine, k, v, k, ts(13, 1), ts(14, 1), true);
-        must_cleanup(&engine, k, ts(13, 1), ts(120, 0));
-        must_get_rollback_protected(&engine, k, ts(13, 1), true);
     }
 
     #[test]
@@ -2123,12 +2077,12 @@ mod tests {
         // Lock conflict
         must_prewrite_put(&engine, k, v, k, 3);
         must_acquire_pessimistic_lock_err(&engine, k, k, 4, 4);
-        must_cleanup(&engine, k, 3, 0);
+        cleanup::tests::must_success(&engine, k, 3, 0);
         must_unlocked(&engine, k);
         must_acquire_pessimistic_lock(&engine, k, k, 5, 5);
         must_prewrite_lock_err(&engine, k, k, 6);
         must_acquire_pessimistic_lock_err(&engine, k, k, 6, 6);
-        must_cleanup(&engine, k, 5, 0);
+        cleanup::tests::must_success(&engine, k, 5, 0);
         must_unlocked(&engine, k);
 
         // Data conflict
@@ -2145,7 +2099,7 @@ mod tests {
         // Rollback
         must_acquire_pessimistic_lock(&engine, k, k, 11, 11);
         must_pessimistic_locked(&engine, k, 11, 11);
-        must_cleanup(&engine, k, 11, 0);
+        cleanup::tests::must_success(&engine, k, 11, 0);
         must_acquire_pessimistic_lock_err(&engine, k, k, 11, 11);
         must_pessimistic_prewrite_put_err(&engine, k, v, k, 11, 11, true);
         must_prewrite_lock_err(&engine, k, k, 11);
@@ -2154,7 +2108,7 @@ mod tests {
         must_acquire_pessimistic_lock(&engine, k, k, 12, 12);
         must_pessimistic_prewrite_put(&engine, k, v, k, 12, 12, true);
         must_locked(&engine, k, 12);
-        must_cleanup(&engine, k, 12, 0);
+        cleanup::tests::must_success(&engine, k, 12, 0);
         must_acquire_pessimistic_lock_err(&engine, k, k, 12, 12);
         must_pessimistic_prewrite_put_err(&engine, k, v, k, 12, 12, true);
         must_prewrite_lock_err(&engine, k, k, 12);
@@ -2198,7 +2152,7 @@ mod tests {
         must_prewrite_put(&engine, k, v, k, 23);
         must_locked(&engine, k, 23);
         must_acquire_pessimistic_lock_err(&engine, k, k, 23, 23);
-        must_cleanup(&engine, k, 23, 0);
+        cleanup::tests::must_success(&engine, k, 23, 0);
         must_acquire_pessimistic_lock(&engine, k, k, 24, 24);
         must_pessimistic_locked(&engine, k, 24, 24);
         must_prewrite_put_err(&engine, k, v, k, 24);
@@ -2299,7 +2253,7 @@ mod tests {
         // there won't be conflicts. So this case is also not checked, and prewrite will succeeed.
         must_pessimistic_prewrite_put(&engine, k, v, k, 47, 48, false);
         must_locked(&engine, k, 47);
-        must_cleanup(&engine, k, 47, 0);
+        cleanup::tests::must_success(&engine, k, 47, 0);
         must_unlocked(&engine, k);
 
         // The rollback of the primary key in a pessimistic transaction should be protected from
@@ -2307,7 +2261,7 @@ mod tests {
         must_acquire_pessimistic_lock(&engine, k, k, 49, 60);
         must_pessimistic_prewrite_put(&engine, k, v, k, 49, 60, true);
         must_locked(&engine, k, 49);
-        must_cleanup(&engine, k, 49, 0);
+        cleanup::tests::must_success(&engine, k, 49, 0);
         must_get_rollback_protected(&engine, k, 49, true);
         must_prewrite_put(&engine, k, v, k, 51);
         must_rollback_collapsed(&engine, k, 51);
@@ -2318,7 +2272,7 @@ mod tests {
         must_acquire_pessimistic_lock(&engine, k, k, 50, 61);
         must_pessimistic_prewrite_put(&engine, k, v, k, 50, 61, true);
         must_locked(&engine, k, 50);
-        must_cleanup(&engine, k, 50, 0);
+        cleanup::tests::must_success(&engine, k, 50, 0);
         must_get_overlapped_rollback(&engine, k, 50, 46, WriteType::Put);
 
         // start_ts and commit_ts interlacing
@@ -2664,7 +2618,7 @@ mod tests {
 
         // The txn has been rolled back; should fail.
         must_acquire_pessimistic_lock(&engine, k, k, 80, 80);
-        must_cleanup(&engine, k, 80, TimeStamp::max());
+        cleanup::tests::must_success(&engine, k, 80, TimeStamp::max());
         must_pipelined_pessimistic_prewrite_put_err(&engine, k, &v, k, 80, 80, true);
     }
 
@@ -2920,7 +2874,7 @@ mod tests {
         must_unlocked(&engine, k);
 
         // ...but it can be rejected by overlapped rollback flag.
-        must_cleanup(&engine, k, 30, 0);
+        cleanup::tests::must_success(&engine, k, 30, 0);
         let w = must_written(&engine, k, 20, 30, WriteType::Put);
         assert!(w.has_overlapped_rollback);
         must_unlocked(&engine, k);
@@ -2943,7 +2897,7 @@ mod tests {
         must_written(&engine, k, 50, 60, WriteType::Put);
 
         // .. and it can also be rejected by overlapped rollback flag.
-        must_cleanup(&engine, k, 60, 0);
+        cleanup::tests::must_success(&engine, k, 60, 0);
         let w = must_written(&engine, k, 50, 60, WriteType::Put);
         assert!(w.has_overlapped_rollback);
         must_unlocked(&engine, k);
@@ -2957,7 +2911,7 @@ mod tests {
         let (k, v) = (b"k1", b"v1");
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 10, 0);
-        must_cleanup(&engine, k, 15, 0);
+        cleanup::tests::must_success(&engine, k, 15, 0);
         must_commit(&engine, k, 10, 15);
         let w = must_written(&engine, k, 10, 15, WriteType::Put);
         assert!(w.has_overlapped_rollback);
@@ -2981,7 +2935,7 @@ mod tests {
 
         // Do not commit with overlapped_rollback if the rollback ts doesn't equal to commit_ts.
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 40, 0);
-        must_cleanup(&engine, k, 44, 0);
+        cleanup::tests::must_success(&engine, k, 44, 0);
         must_commit(&engine, k, 40, 45);
         let w = must_written(&engine, k, 40, 45, WriteType::Put);
         assert!(!w.has_overlapped_rollback);
@@ -2989,20 +2943,20 @@ mod tests {
         // Do not put rollback mark to the lock if the lock is not async commit or if lock.ts is
         // before start_ts or min_commit_ts.
         must_prewrite_put(&engine, k, v, k, 50);
-        must_cleanup(&engine, k, 55, 0);
+        cleanup::tests::must_success(&engine, k, 55, 0);
         let l = must_locked(&engine, k, 50);
         assert!(l.rollback_ts.is_empty());
         must_commit(&engine, k, 50, 56);
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 60, 0);
-        must_cleanup(&engine, k, 59, 0);
+        cleanup::tests::must_success(&engine, k, 59, 0);
         let l = must_locked(&engine, k, 60);
         assert!(l.rollback_ts.is_empty());
         must_commit(&engine, k, 60, 65);
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 70, 75);
-        must_cleanup(&engine, k, 74, 0);
-        must_cleanup(&engine, k, 75, 0);
+        cleanup::tests::must_success(&engine, k, 74, 0);
+        cleanup::tests::must_success(&engine, k, 75, 0);
         let l = must_locked(&engine, k, 70);
         assert_eq!(l.min_commit_ts, 75.into());
         assert_eq!(l.rollback_ts, vec![75.into()]);
