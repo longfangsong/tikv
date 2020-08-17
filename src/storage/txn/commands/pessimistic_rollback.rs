@@ -94,7 +94,7 @@ pub mod tests {
     use crate::storage::kv::Engine;
     use crate::storage::lock_manager::DummyLockManager;
     use crate::storage::mvcc::tests::*;
-    use crate::storage::txn::commands::{WriteCommand, WriteContext};
+    use crate::storage::txn::commands::{commit, WriteCommand, WriteContext};
     use crate::storage::{concurrency_manager::ConcurrencyManager, TestEngineBuilder};
     use kvproto::kvrpcpb::Context;
     use txn_types::Key;
@@ -179,7 +179,7 @@ pub mod tests {
         must_locked(&engine, k, 3);
 
         // Do nothing if committed
-        must_commit(&engine, k, 3, 4);
+        commit::tests::must_success(&engine, k, 3, 4);
         must_unlocked(&engine, k);
         must_get_commit_ts(&engine, k, 3, 4);
         must_success(&engine, k, 3, 3);

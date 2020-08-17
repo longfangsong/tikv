@@ -161,6 +161,7 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 vlog = "0.1.4"
 walkdir = "2"
 minitrace = { git = "https://github.com/pingcap-incubator/minitrace-rust.git", branch = "master" }
+actix-http = "1.0.1"
 
 
 [dependencies.prometheus-static-metric]

@@ -434,6 +434,7 @@ mod tests {
     use crate::storage::kv::{Engine, RocksEngine, TestEngineBuilder};
     use crate::storage::mvcc::tests::*;
     use crate::storage::mvcc::{Error as MvccError, ErrorInner as MvccErrorInner};
+    use crate::storage::txn::commands::commit;
     use crate::storage::txn::{Error as TxnError, ErrorInner as TxnErrorInner};
     use kvproto::kvrpcpb::Context;
 
@@ -467,7 +468,7 @@ mod tests {
         let new_engine = || TestEngineBuilder::new().build().unwrap();
         let add_write_at_ts = |commit_ts, engine, key, value| {
             must_prewrite_put(engine, key, value, key, commit_ts);
-            must_commit(engine, key, commit_ts, commit_ts);
+            commit::tests::must_success(engine, key, commit_ts, commit_ts);
         };
 
         let add_lock_at_ts = |lock_ts, engine, key| {
@@ -547,9 +548,9 @@ mod tests {
 
         for i in 0..5 {
             must_prewrite_put(&engine, &[i], &[b'v', i], &[i], 1);
-            must_commit(&engine, &[i], 1, 2);
+            commit::tests::must_success(&engine, &[i], 1, 2);
             must_prewrite_put(&engine, &[i], &[b'v', i], &[i], 10);
-            must_commit(&engine, &[i], 10, 100);
+            commit::tests::must_success(&engine, &[i], 10, 100);
         }
 
         must_acquire_pessimistic_lock(&engine, &[1], &[1], 20, 110);
@@ -615,7 +616,7 @@ mod tests {
 
         for i in 0..5 {
             must_prewrite_put(&engine, &[i], &[b'v', i], &[i], 10);
-            must_commit(&engine, &[i], 10, 20);
+            commit::tests::must_success(&engine, &[i], 10, 20);
         }
 
         // Locks are: 30, 40, 50, 60, 70
@@ -694,15 +695,15 @@ mod tests {
         if deep_write_seek {
             for i in 0..SEEK_BOUND {
                 must_prewrite_put(&engine, key, val1, key, i);
-                must_commit(&engine, key, i, i);
+                commit::tests::must_success(&engine, key, i, i);
             }
         }
 
         must_prewrite_put(&engine, key, val1, key, 100);
-        must_commit(&engine, key, 100, 200);
+        commit::tests::must_success(&engine, key, 100, 200);
         let (key, val2) = (b"foo", b"bar2");
         must_prewrite_put(&engine, key, val2, key, 300);
-        must_commit(&engine, key, 300, 400);
+        commit::tests::must_success(&engine, key, 300, 400);
 
         must_met_newer_ts_data(
             &engine,

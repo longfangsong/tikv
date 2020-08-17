@@ -314,9 +314,7 @@ pub mod tests {
     use super::*;
     use crate::config::DbConfig;
     use crate::storage::kv::{RocksEngine as StorageRocksEngine, TestEngineBuilder};
-    use crate::storage::mvcc::tests::{
-        must_commit, must_get_none, must_prewrite_delete, must_prewrite_put,
-    };
+    use crate::storage::mvcc::tests::{must_get_none, must_prewrite_delete, must_prewrite_put};
     use engine_rocks::raw::CompactOptions;
     use engine_rocks::util::get_cf_handle;
     use engine_rocks::RocksEngine;
@@ -392,6 +390,7 @@ pub mod tests {
     // Test a key can be GCed correctly if its MVCC versions cover multiple SST files.
     mod mvcc_versions_cover_multiple_ssts {
         use super::*;
+        use crate::storage::txn::commands::commit;
 
         #[test]
         fn at_bottommost_level() {
@@ -405,22 +404,22 @@ pub mod tests {
             // So the construction of SST files will be:
             // L6: |key_110|
             must_prewrite_put(&engine, b"key", b"value", b"key", 100);
-            must_commit(&engine, b"key", 100, 110);
+            commit::tests::must_success(&engine, b"key", 100, 110);
             do_gc_by_compact(&raw_engine, None, None, 50, None);
             assert_eq!(rocksdb_level_file_counts(&raw_engine, CF_WRITE)[6], 1);
 
             // So the construction of SST files will be:
             // L6: |key_140, key_130|, |key_110|
             must_prewrite_put(&engine, b"key", b"value", b"key", 120);
-            must_commit(&engine, b"key", 120, 130);
+            commit::tests::must_success(&engine, b"key", 120, 130);
             must_prewrite_delete(&engine, b"key", b"key", 140);
-            must_commit(&engine, b"key", 140, 140);
+            commit::tests::must_success(&engine, b"key", 140, 140);
             do_gc_by_compact(&raw_engine, None, Some(&split_key), 50, None);
             assert_eq!(rocksdb_level_file_counts(&raw_engine, CF_WRITE)[6], 2);
 
             // Put more key/value pairs so that 1 file in L0 and 1 file in L6 can be merged.
             must_prewrite_put(&engine, b"kex", b"value", b"kex", 100);
-            must_commit(&engine, b"kex", 100, 110);
+            commit::tests::must_success(&engine, b"kex", 100, 110);
 
             do_gc_by_compact(&raw_engine, None, Some(&split_key), 200, None);
 
@@ -446,9 +445,9 @@ pub mod tests {
             // So the construction of SST files will be:
             // L6: |AAAAA_101, CCCCC_111|
             must_prewrite_put(&engine, b"AAAAA", b"value", b"key", 100);
-            must_commit(&engine, b"AAAAA", 100, 101);
+            commit::tests::must_success(&engine, b"AAAAA", 100, 101);
             must_prewrite_put(&engine, b"CCCCC", b"value", b"key", 110);
-            must_commit(&engine, b"CCCCC", 110, 111);
+            commit::tests::must_success(&engine, b"CCCCC", 110, 111);
             do_gc_by_compact(&raw_engine, None, None, 50, Some(6));
             assert_eq!(rocksdb_level_file_counts(&raw_engine, CF_WRITE)[6], 1);
 
@@ -456,9 +455,9 @@ pub mod tests {
             // L0: |BBBB_101, DDDDD_101|
             // L6: |AAAAA_101, CCCCC_111|
             must_prewrite_put(&engine, b"BBBBB", b"value", b"key", 100);
-            must_commit(&engine, b"BBBBB", 100, 101);
+            commit::tests::must_success(&engine, b"BBBBB", 100, 101);
             must_prewrite_put(&engine, b"DDDDD", b"value", b"key", 100);
-            must_commit(&engine, b"DDDDD", 100, 101);
+            commit::tests::must_success(&engine, b"DDDDD", 100, 101);
             raw_engine.flush_cf(CF_WRITE, true).unwrap();
             assert_eq!(rocksdb_level_file_counts(&raw_engine, CF_WRITE)[0], 1);
 
@@ -466,9 +465,9 @@ pub mod tests {
             // L0: |AAAAA_111, BBBBB_111|, |BBBB_101, DDDDD_101|
             // L6: |AAAAA_101, CCCCC_111|
             must_prewrite_put(&engine, b"AAAAA", b"value", b"key", 110);
-            must_commit(&engine, b"AAAAA", 110, 111);
+            commit::tests::must_success(&engine, b"AAAAA", 110, 111);
             must_prewrite_delete(&engine, b"BBBBB", b"BBBBB", 110);
-            must_commit(&engine, b"BBBBB", 110, 111);
+            commit::tests::must_success(&engine, b"BBBBB", 110, 111);
             raw_engine.flush_cf(CF_WRITE, true).unwrap();
             assert_eq!(rocksdb_level_file_counts(&raw_engine, CF_WRITE)[0], 2);
 

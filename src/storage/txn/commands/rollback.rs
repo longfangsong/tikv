@@ -40,7 +40,6 @@ impl<S: Snapshot, L: LockManager> WriteCommand<S, L> for Rollback {
             !self.ctx.get_not_fill_cache(),
             context.concurrency_manager,
         );
-
         let rows = self.keys.len();
         let mut released_locks = ReleasedLocks::new(self.start_ts, TimeStamp::zero());
         for k in self.keys {

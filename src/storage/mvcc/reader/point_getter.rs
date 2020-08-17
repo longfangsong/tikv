@@ -333,6 +333,7 @@ mod tests {
 
     use crate::storage::kv::{CfStatistics, Engine, RocksEngine, TestEngineBuilder};
     use crate::storage::mvcc::tests::*;
+    use crate::storage::txn::commands::commit;
 
     fn new_multi_point_getter<E: Engine>(engine: &E, ts: TimeStamp) -> PointGetter<E::Snap> {
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -442,7 +443,7 @@ mod tests {
             b"foo1",
             2,
         );
-        must_commit(&engine, b"foo1", 2, 3);
+        commit::tests::must_success(&engine, b"foo1", 2, 3);
         must_prewrite_put(
             &engine,
             b"foo2",
@@ -457,10 +458,10 @@ mod tests {
             b"foo2",
             4,
         );
-        must_commit(&engine, b"foo2", 4, 5);
-        must_commit(&engine, b"bar", 4, 5);
+        commit::tests::must_success(&engine, b"foo2", 4, 5);
+        commit::tests::must_success(&engine, b"bar", 4, 5);
         must_prewrite_delete(&engine, b"xxx", b"xxx", 6);
-        must_commit(&engine, b"xxx", 6, 7);
+        commit::tests::must_success(&engine, b"xxx", 6, 7);
         must_prewrite_put(
             &engine,
             b"box",
@@ -469,14 +470,14 @@ mod tests {
             8,
         );
         must_prewrite_delete(&engine, b"foo1", b"box", 8);
-        must_commit(&engine, b"box", 8, 9);
-        must_commit(&engine, b"foo1", 8, 9);
+        commit::tests::must_success(&engine, b"box", 8, 9);
+        commit::tests::must_success(&engine, b"foo1", 8, 9);
         must_prewrite_lock(&engine, b"bar", b"bar", 10);
-        must_commit(&engine, b"bar", 10, 11);
+        commit::tests::must_success(&engine, b"bar", 10, 11);
         for i in 20..100 {
             if i % 2 == 0 {
                 must_prewrite_lock(&engine, b"foo2", b"foo2", i);
-                must_commit(&engine, b"foo2", i, i + 1);
+                commit::tests::must_success(&engine, b"foo2", i, i + 1);
             }
         }
         must_prewrite_put(
@@ -486,7 +487,7 @@ mod tests {
             b"zz",
             102,
         );
-        must_commit(&engine, b"zz", 102, 103);
+        commit::tests::must_success(&engine, b"zz", 102, 103);
         engine
     }
 
@@ -507,8 +508,8 @@ mod tests {
             2,
         );
         must_prewrite_put(&engine, b"bar", b"barval", b"foo1", 2);
-        must_commit(&engine, b"foo1", 2, 3);
-        must_commit(&engine, b"bar", 2, 3);
+        commit::tests::must_success(&engine, b"foo1", 2, 3);
+        commit::tests::must_success(&engine, b"bar", 2, 3);
 
         must_prewrite_put(
             &engine,
@@ -742,7 +743,7 @@ mod tests {
 
         let (key, val) = (b"foo", b"bar");
         must_prewrite_put(&engine, key, val, key, 10);
-        must_commit(&engine, key, 10, 20);
+        commit::tests::must_success(&engine, key, 10, 20);
 
         let mut getter = new_single_point_getter(&engine, TimeStamp::max());
         must_get_value(&mut getter, key, val);
@@ -775,7 +776,7 @@ mod tests {
 
         let (key, val) = (b"foo", b"bar");
         must_prewrite_put(&engine, key, val, key, 10);
-        must_commit(&engine, key, 10, 20);
+        commit::tests::must_success(&engine, key, 10, 20);
 
         must_prewrite_delete(&engine, key, key, 30);
 
@@ -802,11 +803,11 @@ mod tests {
 
         let (key, val1) = (b"foo", b"bar1");
         must_prewrite_put(&engine, key, val1, key, 10);
-        must_commit(&engine, key, 10, 20);
+        commit::tests::must_success(&engine, key, 10, 20);
 
         let (key, val2) = (b"foo", b"bar2");
         must_prewrite_put(&engine, key, val2, key, 30);
-        must_commit(&engine, key, 30, 40);
+        commit::tests::must_success(&engine, key, 30, 40);
 
         must_met_newer_ts_data(&engine, 20, key, val1, true);
         must_met_newer_ts_data(&engine, 30, key, val1, true);

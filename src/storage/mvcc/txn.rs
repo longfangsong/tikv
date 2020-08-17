@@ -1240,7 +1240,7 @@ mod tests {
         must_get_none(&engine, k1, 3);
 
         must_prewrite_lock(&engine, k1, k1, 3);
-        must_commit(&engine, k1, 3, 4);
+        commit::tests::must_success(&engine, k1, 3, 4);
         // should ignore read lock
         must_get_none(&engine, k1, 5);
 
@@ -1255,8 +1255,8 @@ mod tests {
         // should read secondary locks even when reading the latest record
         must_get_err(&engine, k2, u64::max_value());
 
-        must_commit(&engine, k1, 5, 10);
-        must_commit(&engine, k2, 5, 10);
+        commit::tests::must_success(&engine, k1, 5, 10);
+        commit::tests::must_success(&engine, k2, 5, 10);
         must_get_none(&engine, k1, 3);
         // should not read with ts < commit_ts
         must_get_none(&engine, k1, 7);
@@ -1268,7 +1268,7 @@ mod tests {
         must_prewrite_delete(&engine, k1, k1, 15);
         // should ignore the lock and get previous record when reading the latest record
         must_get(&engine, k1, u64::max_value(), v);
-        must_commit(&engine, k1, 15, 20);
+        commit::tests::must_success(&engine, k1, 15, 20);
         must_get_none(&engine, k1, 3);
         must_get_none(&engine, k1, 7);
         must_get(&engine, k1, 13, v);
@@ -1279,7 +1279,7 @@ mod tests {
         // T1: start_ts = 25, commit_ts = 27
         // T2: start_ts = 23, commit_ts = 31
         must_prewrite_put(&engine, k1, v, k1, 25);
-        must_commit(&engine, k1, 25, 27);
+        commit::tests::must_success(&engine, k1, 25, 27);
         must_acquire_pessimistic_lock(&engine, k1, k1, 23, 29);
         must_get(&engine, k1, 30, v);
         must_pessimistic_prewrite_delete(&engine, k1, k1, 23, 29, true);
@@ -1287,7 +1287,7 @@ mod tests {
         // should read the latest record when `ts == u64::max_value()`
         // even if lock.start_ts(23) < latest write.commit_ts(27)
         must_get(&engine, k1, u64::max_value(), v);
-        must_commit(&engine, k1, 23, 31);
+        commit::tests::must_success(&engine, k1, 23, 31);
         must_get(&engine, k1, 30, v);
         must_get_none(&engine, k1, 32);
     }
@@ -1311,7 +1311,7 @@ mod tests {
         // Conflict.
         must_prewrite_lock_err(&engine, k, k, 6);
 
-        must_commit(&engine, k, 5, 10);
+        commit::tests::must_success(&engine, k, 5, 10);
         must_written(&engine, k, 5, 10, WriteType::Put);
         // Delayed prewrite request after committing should do nothing.
         must_prewrite_put_err(&engine, k, v, k, 5);
@@ -1338,18 +1338,18 @@ mod tests {
         let engine = TestEngineBuilder::new().build().unwrap();
         let (k1, v1, v2, v3) = (b"k1", b"v1", b"v2", b"v3");
         must_prewrite_put(&engine, k1, v1, k1, 1);
-        must_commit(&engine, k1, 1, 2);
+        commit::tests::must_success(&engine, k1, 1, 2);
 
         // "k1" already exist, returns AlreadyExist error.
         assert!(try_prewrite_insert(&engine, k1, v2, k1, 3).is_err());
 
         // Delete "k1"
         must_prewrite_delete(&engine, k1, k1, 4);
-        must_commit(&engine, k1, 4, 5);
+        commit::tests::must_success(&engine, k1, 4, 5);
 
         // After delete "k1", insert returns ok.
         assert!(try_prewrite_insert(&engine, k1, v2, k1, 6).is_ok());
-        must_commit(&engine, k1, 6, 7);
+        commit::tests::must_success(&engine, k1, 6, 7);
 
         // Rollback
         must_prewrite_put(&engine, k1, v3, k1, 8);
@@ -1359,7 +1359,7 @@ mod tests {
 
         // Delete "k1" again
         must_prewrite_delete(&engine, k1, k1, 10);
-        must_commit(&engine, k1, 10, 11);
+        commit::tests::must_success(&engine, k1, 10, 11);
 
         // Rollback again
         must_prewrite_put(&engine, k1, v3, k1, 12);
@@ -1367,7 +1367,7 @@ mod tests {
 
         // After delete "k1", insert returns ok.
         assert!(try_prewrite_insert(&engine, k1, v2, k1, 13).is_ok());
-        must_commit(&engine, k1, 13, 14);
+        commit::tests::must_success(&engine, k1, 13, 14);
     }
 
     #[test]
@@ -1375,20 +1375,20 @@ mod tests {
         let engine = TestEngineBuilder::new().build().unwrap();
         let (k1, v1, v2, v3) = (b"k1", b"v1", b"v2", b"v3");
         must_prewrite_put(&engine, k1, v1, k1, 1);
-        must_commit(&engine, k1, 1, 2);
+        commit::tests::must_success(&engine, k1, 1, 2);
 
         // "k1" already exist, returns AlreadyExist error.
         assert!(try_prewrite_check_not_exists(&engine, k1, k1, 3).is_err());
 
         // Delete "k1"
         must_prewrite_delete(&engine, k1, k1, 4);
-        must_commit(&engine, k1, 4, 5);
+        commit::tests::must_success(&engine, k1, 4, 5);
 
         // After delete "k1", check_not_exists returns ok.
         assert!(try_prewrite_check_not_exists(&engine, k1, k1, 6).is_ok());
 
         assert!(try_prewrite_insert(&engine, k1, v2, k1, 7).is_ok());
-        must_commit(&engine, k1, 7, 8);
+        commit::tests::must_success(&engine, k1, 7, 8);
 
         // Rollback
         must_prewrite_put(&engine, k1, v3, k1, 9);
@@ -1397,7 +1397,7 @@ mod tests {
 
         // Delete "k1" again
         must_prewrite_delete(&engine, k1, k1, 11);
-        must_commit(&engine, k1, 11, 12);
+        commit::tests::must_success(&engine, k1, 11, 12);
 
         // Rollback again
         must_prewrite_put(&engine, k1, v3, k1, 13);
@@ -1420,7 +1420,7 @@ mod tests {
 
         let (k, v) = (b"k1", b"v1");
         must_prewrite_put(&engine, k, v, k, 5);
-        must_commit(&engine, k, 5, 10);
+        commit::tests::must_success(&engine, k, 5, 10);
 
         // Lock
         must_prewrite_lock(&engine, k, k, 15);
@@ -1465,7 +1465,7 @@ mod tests {
 
         let (k, v) = (b"k1", b"v1");
         must_prewrite_put(&engine, k, v, k, 5);
-        must_commit(&engine, k, 5, 10);
+        commit::tests::must_success(&engine, k, 5, 10);
 
         // Prewrite delete
         must_prewrite_delete(&engine, k, k, 15);
@@ -1483,8 +1483,8 @@ mod tests {
 
         must_prewrite_put(&engine, k1, v1, k1, 10);
         must_prewrite_put(&engine, k2, v2, k2, 11);
-        must_commit(&engine, k1, 10, 20);
-        must_commit(&engine, k2, 11, 20);
+        commit::tests::must_success(&engine, k1, 10, 20);
+        commit::tests::must_success(&engine, k2, 11, 20);
         let w1 = must_written(&engine, k1, 10, 20, WriteType::Put);
         let w2 = must_written(&engine, k2, 11, 20, WriteType::Put);
         assert!(!w1.has_overlapped_rollback);
@@ -1520,16 +1520,16 @@ mod tests {
         must_locked(&engine, k1, 10);
         must_locked(&engine, k2, 10);
         must_locked(&engine, k3, 10);
-        must_commit(&engine, k1, 10, 15);
-        must_commit(&engine, k2, 10, 15);
-        must_commit(&engine, k3, 10, 15);
+        commit::tests::must_success(&engine, k1, 10, 15);
+        commit::tests::must_success(&engine, k2, 10, 15);
+        commit::tests::must_success(&engine, k3, 10, 15);
         must_written(&engine, k1, 10, 15, WriteType::Put);
         must_written(&engine, k2, 10, 15, WriteType::Lock);
         must_written(&engine, k3, 10, 15, WriteType::Delete);
         // commit should be idempotent
-        must_commit(&engine, k1, 10, 15);
-        must_commit(&engine, k2, 10, 15);
-        must_commit(&engine, k3, 10, 15);
+        commit::tests::must_success(&engine, k1, 10, 15);
+        commit::tests::must_success(&engine, k2, 10, 15);
+        commit::tests::must_success(&engine, k3, 10, 15);
     }
 
     #[test]
@@ -1544,13 +1544,13 @@ mod tests {
         let engine = TestEngineBuilder::new().build().unwrap();
 
         // Not prewrite yet
-        must_commit_err(&engine, k, 1, 2);
+        commit::tests::must_err(&engine, k, 1, 2);
         must_prewrite_put(&engine, k, v, k, 5);
         // start_ts not match
-        must_commit_err(&engine, k, 4, 5);
+        commit::tests::must_err(&engine, k, 4, 5);
         must_rollback(&engine, k, 5);
         // commit after rollback
-        must_commit_err(&engine, k, 5, 6);
+        commit::tests::must_err(&engine, k, 5, 6);
     }
 
     #[test]
@@ -1582,9 +1582,9 @@ mod tests {
             uncommitted(100, ts(20, 1), false, vec![]),
         );
         // The the min_commit_ts should be ts(20, 1)
-        must_commit_err(&engine, k, ts(10, 0), ts(15, 0));
-        must_commit_err(&engine, k, ts(10, 0), ts(20, 0));
-        must_commit(&engine, k, ts(10, 0), ts(20, 1));
+        commit::tests::must_err(&engine, k, ts(10, 0), ts(15, 0));
+        commit::tests::must_err(&engine, k, ts(10, 0), ts(20, 0));
+        commit::tests::must_success(&engine, k, ts(10, 0), ts(20, 1));
 
         must_prewrite_put_for_large_txn(&engine, k, v, k, ts(30, 0), 100, 0);
         check_txn_status::tests::must_success(
@@ -1596,7 +1596,7 @@ mod tests {
             true,
             uncommitted(100, ts(40, 1), false, vec![]),
         );
-        must_commit(&engine, k, ts(30, 0), ts(50, 0));
+        commit::tests::must_success(&engine, k, ts(30, 0), ts(50, 0));
 
         // If the min_commit_ts of the pessimistic lock is greater than prewrite's, use it.
         must_acquire_pessimistic_lock_for_large_txn(&engine, k, k, ts(60, 0), ts(60, 0), 100);
@@ -1625,8 +1625,8 @@ mod tests {
         );
         // The min_commit_ts is ts(70, 0) other than ts(60, 1) in prewrite request.
         must_large_txn_locked(&engine, k, ts(60, 0), 100, ts(70, 1), false);
-        must_commit_err(&engine, k, ts(60, 0), ts(65, 0));
-        must_commit(&engine, k, ts(60, 0), ts(80, 0));
+        commit::tests::must_err(&engine, k, ts(60, 0), ts(65, 0));
+        commit::tests::must_success(&engine, k, ts(60, 0), ts(80, 0));
     }
 
     #[test]
@@ -1646,7 +1646,7 @@ mod tests {
         must_rollback(&engine, k, t2);
         must_rollback(&engine, k, t4);
 
-        must_commit(&engine, k, t1, t3);
+        commit::tests::must_success(&engine, k, t1, t3);
         // The rollback should be failed since the transaction
         // was committed before.
         must_rollback_err(&engine, k, t1);
@@ -1669,7 +1669,7 @@ mod tests {
 
         // Can't rollback committed transaction.
         must_prewrite_put(&engine, k, v, k, 25);
-        must_commit(&engine, k, 25, 30);
+        commit::tests::must_success(&engine, k, 25, 30);
         must_rollback_err(&engine, k, 25);
         must_rollback_err(&engine, k, 25);
 
@@ -1680,7 +1680,7 @@ mod tests {
         must_written(&engine, k, 34, 34, WriteType::Rollback);
         must_written(&engine, k, 36, 36, WriteType::Rollback);
         must_locked(&engine, k, 35);
-        must_commit(&engine, k, 35, 40);
+        commit::tests::must_success(&engine, k, 35, 40);
         must_get(&engine, k, 39, v);
         must_get_none(&engine, k, 41);
     }
@@ -1708,15 +1708,15 @@ mod tests {
         let engine = TestEngineBuilder::new().build().unwrap();
 
         must_prewrite_put(&engine, k, v1, k, 5);
-        must_commit(&engine, k, 5, 10);
+        commit::tests::must_success(&engine, k, 5, 10);
         must_prewrite_put(&engine, k, v2, k, 15);
-        must_commit(&engine, k, 15, 20);
+        commit::tests::must_success(&engine, k, 15, 20);
         must_prewrite_delete(&engine, k, k, 25);
-        must_commit(&engine, k, 25, 30);
+        commit::tests::must_success(&engine, k, 25, 30);
         must_prewrite_put(&engine, k, v3, k, 35);
-        must_commit(&engine, k, 35, 40);
+        commit::tests::must_success(&engine, k, 35, 40);
         must_prewrite_lock(&engine, k, k, 45);
-        must_commit(&engine, k, 45, 50);
+        commit::tests::must_success(&engine, k, 45, 50);
         must_prewrite_put(&engine, k, v4, k, 55);
         must_rollback(&engine, k, 55);
 
@@ -1790,7 +1790,7 @@ mod tests {
         must_prewrite_put(&engine, k, v, k, 5);
         must_seek_write_none(&engine, k, 5);
 
-        must_commit(&engine, k, 5, 10);
+        commit::tests::must_success(&engine, k, 5, 10);
         must_seek_write(&engine, k, TimeStamp::max(), 5, 10, WriteType::Put);
         must_seek_write_none(&engine, k2, TimeStamp::max());
         must_get_commit_ts(&engine, k, 5, 10);
@@ -1802,7 +1802,7 @@ mod tests {
         must_get_commit_ts_none(&engine, k, 15);
 
         must_prewrite_lock(&engine, k, k, 25);
-        must_commit(&engine, k, 25, 30);
+        commit::tests::must_success(&engine, k, 25, 30);
         must_seek_write(&engine, k, TimeStamp::max(), 25, 30, WriteType::Lock);
         must_get_commit_ts(&engine, k, 25, 30);
     }
@@ -1818,11 +1818,11 @@ mod tests {
     fn test_scan_keys_imp(keys: Vec<&[u8]>, values: Vec<&[u8]>) {
         let engine = TestEngineBuilder::new().build().unwrap();
         must_prewrite_put(&engine, keys[0], values[0], keys[0], 1);
-        must_commit(&engine, keys[0], 1, 10);
+        commit::tests::must_success(&engine, keys[0], 1, 10);
         must_prewrite_lock(&engine, keys[1], keys[1], 1);
-        must_commit(&engine, keys[1], 1, 5);
+        commit::tests::must_success(&engine, keys[1], 1, 5);
         must_prewrite_delete(&engine, keys[2], keys[2], 1);
-        must_commit(&engine, keys[2], 1, 20);
+        commit::tests::must_success(&engine, keys[2], 1, 20);
         must_prewrite_put(&engine, keys[3], values[1], keys[3], 1);
         must_prewrite_lock(&engine, keys[4], keys[4], 10);
         must_prewrite_delete(&engine, keys[5], keys[5], 5);
@@ -1889,7 +1889,7 @@ mod tests {
         let (key, value) = (b"key", b"value");
 
         must_prewrite_put(&engine, key, value, key, 5);
-        must_commit(&engine, key, 5, 10);
+        commit::tests::must_success(&engine, key, 5, 10);
 
         let ctx = Context::default();
         let snapshot = engine.snapshot(&ctx).unwrap();
@@ -1929,7 +1929,7 @@ mod tests {
         let (key, v1, v2) = (b"key", b"v1", b"v2");
 
         must_prewrite_put(&engine, key, v1, key, 5);
-        must_commit(&engine, key, 5, 10);
+        commit::tests::must_success(&engine, key, 5, 10);
         must_prewrite_put(&engine, key, v2, key, 15);
         must_get_err(&engine, key, 20);
         must_get_rc(&engine, key, 12, v1);
@@ -1973,7 +1973,7 @@ mod tests {
             &[2],
             3,
         );
-        must_commit(&engine, &[2], 3, 3);
+        commit::tests::must_success(&engine, &[2], 3, 3);
 
         must_prewrite_put(
             &engine,
@@ -1982,7 +1982,7 @@ mod tests {
             &[3],
             3,
         );
-        must_commit(&engine, &[3], 3, 4);
+        commit::tests::must_success(&engine, &[3], 3, 4);
 
         must_prewrite_put(
             &engine,
@@ -1991,7 +1991,7 @@ mod tests {
             &[3],
             5,
         );
-        must_commit(&engine, &[3], 5, 5);
+        commit::tests::must_success(&engine, &[3], 5, 5);
 
         must_prewrite_put(
             &engine,
@@ -2000,7 +2000,7 @@ mod tests {
             &[6],
             3,
         );
-        must_commit(&engine, &[6], 3, 6);
+        commit::tests::must_success(&engine, &[6], 3, 6);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut reader =
@@ -2023,7 +2023,7 @@ mod tests {
         let engine = TestEngineBuilder::new().build().unwrap();
 
         must_prewrite_put(&engine, &[2], b"vv", &[2], 3);
-        must_commit(&engine, &[2], 3, 3);
+        commit::tests::must_success(&engine, &[2], 3, 3);
 
         must_prewrite_put(
             &engine,
@@ -2032,7 +2032,7 @@ mod tests {
             &[3],
             4,
         );
-        must_commit(&engine, &[3], 4, 4);
+        commit::tests::must_success(&engine, &[3], 4, 4);
 
         must_prewrite_put(
             &engine,
@@ -2041,10 +2041,10 @@ mod tests {
             &[5],
             2,
         );
-        must_commit(&engine, &[5], 2, 5);
+        commit::tests::must_success(&engine, &[5], 2, 5);
 
         must_prewrite_put(&engine, &[6], b"xxx", &[6], 3);
-        must_commit(&engine, &[6], 3, 6);
+        commit::tests::must_success(&engine, &[6], 3, 6);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut reader =
@@ -2071,7 +2071,7 @@ mod tests {
         must_pessimistic_locked(&engine, k, 1, 1);
         must_pessimistic_prewrite_put(&engine, k, v, k, 1, 1, true);
         must_locked(&engine, k, 1);
-        must_commit(&engine, k, 1, 2);
+        commit::tests::must_success(&engine, k, 1, 2);
         must_unlocked(&engine, k);
 
         // Lock conflict
@@ -2087,13 +2087,13 @@ mod tests {
 
         // Data conflict
         must_prewrite_put(&engine, k, v, k, 7);
-        must_commit(&engine, k, 7, 9);
+        commit::tests::must_success(&engine, k, 7, 9);
         must_unlocked(&engine, k);
         must_prewrite_lock_err(&engine, k, k, 8);
         must_acquire_pessimistic_lock_err(&engine, k, k, 8, 8);
         must_acquire_pessimistic_lock(&engine, k, k, 8, 9);
         must_pessimistic_prewrite_put(&engine, k, v, k, 8, 8, true);
-        must_commit(&engine, k, 8, 10);
+        commit::tests::must_success(&engine, k, 8, 10);
         must_unlocked(&engine, k);
 
         // Rollback
@@ -2123,9 +2123,9 @@ mod tests {
         must_locked(&engine, k, 13);
         must_pessimistic_prewrite_put(&engine, k, v, k, 13, 13, true);
         must_locked(&engine, k, 13);
-        must_commit(&engine, k, 13, 14);
+        commit::tests::must_success(&engine, k, 13, 14);
         must_unlocked(&engine, k);
-        must_commit(&engine, k, 13, 14);
+        commit::tests::must_success(&engine, k, 13, 14);
         must_unlocked(&engine, k);
 
         // Pessimistic lock doesn't block reads.
@@ -2134,14 +2134,14 @@ mod tests {
         must_get(&engine, k, 16, v);
         must_pessimistic_prewrite_delete(&engine, k, k, 15, 15, true);
         must_get_err(&engine, k, 16);
-        must_commit(&engine, k, 15, 17);
+        commit::tests::must_success(&engine, k, 15, 17);
 
         // Rollback
         must_acquire_pessimistic_lock(&engine, k, k, 18, 18);
         must_rollback(&engine, k, 18);
         must_unlocked(&engine, k);
         must_prewrite_put(&engine, k, v, k, 19);
-        must_commit(&engine, k, 19, 20);
+        commit::tests::must_success(&engine, k, 19, 20);
         must_acquire_pessimistic_lock_err(&engine, k, k, 18, 21);
         must_unlocked(&engine, k);
 
@@ -2167,7 +2167,7 @@ mod tests {
         must_locked(&engine, k, 26);
 
         // Acquire lock on a committed key should fail.
-        must_commit(&engine, k, 26, 27);
+        commit::tests::must_success(&engine, k, 26, 27);
         must_unlocked(&engine, k);
         must_get_none(&engine, k, 28);
         must_acquire_pessimistic_lock_err(&engine, k, k, 26, 26);
@@ -2185,7 +2185,7 @@ mod tests {
         // Non pessimistic key in pessimistic transaction.
         must_pessimistic_prewrite_put(&engine, k, v, k, 30, 30, false);
         must_locked(&engine, k, 30);
-        must_commit(&engine, k, 30, 31);
+        commit::tests::must_success(&engine, k, 30, 31);
         must_unlocked(&engine, k);
         must_get_commit_ts(&engine, k, 30, 31);
 
@@ -2218,7 +2218,7 @@ mod tests {
 
         // Commit pessimistic transaction's key but with smaller commit_ts than for_update_ts.
         // Currently not checked, so in this case it will actually be successfully committed.
-        must_commit(&engine, k, 35, 36);
+        commit::tests::must_success(&engine, k, 35, 36);
         must_unlocked(&engine, k);
         must_get_commit_ts(&engine, k, 35, 36);
 
@@ -2228,7 +2228,7 @@ mod tests {
         must_pessimistic_locked(&engine, k, 40, 40);
         must_pessimistic_prewrite_put(&engine, k, v, k, 40, 40, false);
         must_locked(&engine, k, 40);
-        must_commit(&engine, k, 40, 41);
+        commit::tests::must_success(&engine, k, 40, 41);
         must_unlocked(&engine, k);
 
         // Prewrite with different for_update_ts.
@@ -2237,14 +2237,14 @@ mod tests {
         must_pessimistic_locked(&engine, k, 42, 45);
         must_pessimistic_prewrite_put(&engine, k, v, k, 42, 43, true);
         must_locked(&engine, k, 42);
-        must_commit(&engine, k, 42, 45);
+        commit::tests::must_success(&engine, k, 42, 45);
         must_unlocked(&engine, k);
 
         must_acquire_pessimistic_lock(&engine, k, k, 46, 47);
         must_pessimistic_locked(&engine, k, 46, 47);
         must_pessimistic_prewrite_put(&engine, k, v, k, 46, 48, true);
         must_locked(&engine, k, 46);
-        must_commit(&engine, k, 46, 50);
+        commit::tests::must_success(&engine, k, 46, 50);
         must_unlocked(&engine, k);
 
         // Prewrite on non-pessimistic key meets write with larger commit_ts than current
@@ -2281,7 +2281,7 @@ mod tests {
             let commit_ts = start_ts + 50;
             must_acquire_pessimistic_lock(&engine, k, k, *start_ts, for_update_ts);
             must_pessimistic_prewrite_put(&engine, k, v, k, *start_ts, for_update_ts, true);
-            must_commit(&engine, k, *start_ts, commit_ts);
+            commit::tests::must_success(&engine, k, *start_ts, commit_ts);
             must_get(&engine, k, commit_ts + 1, v);
         }
 
@@ -2343,10 +2343,10 @@ mod tests {
         let v = b"v1";
 
         must_prewrite_put(&engine, k, v, k, 10);
-        must_commit(&engine, k, 10, 11);
+        commit::tests::must_success(&engine, k, 10, 11);
         must_acquire_pessimistic_lock(&engine, k, k, 5, 12);
         must_pessimistic_prewrite_lock(&engine, k, k, 5, 12, true);
-        must_commit(&engine, k, 5, 15);
+        commit::tests::must_success(&engine, k, 5, 15);
 
         // Now in write cf:
         // start_ts = 10, commit_ts = 11, Put("v1")
@@ -2466,7 +2466,7 @@ mod tests {
 
         // Commit k3 at 20.
         must_prewrite_put(&engine, k3, v3, k3, 1);
-        must_commit(&engine, k3, 1, 20);
+        commit::tests::must_success(&engine, k3, 1, 20);
 
         // Txn-10 acquires pessimistic locks on k1 and k3.
         must_acquire_pessimistic_lock(&engine, k1, k1, 10, 10);
@@ -2497,8 +2497,8 @@ mod tests {
 
         let k = b"k";
         must_acquire_pessimistic_lock(&engine, k, k, 10, 10);
-        must_commit_err(&engine, k, 20, 30);
-        must_commit(&engine, k, 10, 20);
+        commit::tests::must_err(&engine, k, 20, 30);
+        commit::tests::must_success(&engine, k, 10, 20);
         must_seek_write(&engine, k, 30, 10, 20, WriteType::Lock);
     }
 
@@ -2521,7 +2521,7 @@ mod tests {
             Error(box ErrorInner::KeyIsLocked(_)) => (),
             e => panic!("unexpected error: {}", e),
         };
-        must_commit(&engine, k, 10, 20);
+        commit::tests::must_success(&engine, k, 10, 20);
         // WriteConflict
         match must_acquire_pessimistic_lock_return_value_err(&engine, k, k, 15, 15) {
             Error(box ErrorInner::WriteConflict { .. }) => (),
@@ -2536,7 +2536,7 @@ mod tests {
 
         // Skip Write::Lock
         must_prewrite_lock(&engine, k, k, 30);
-        must_commit(&engine, k, 30, 40);
+        commit::tests::must_success(&engine, k, 30, 40);
         assert_eq!(
             must_acquire_pessimistic_lock_return_value(&engine, k, k, 45, 45),
             Some(v.to_vec())
@@ -2555,7 +2555,7 @@ mod tests {
 
         // Delete
         must_prewrite_delete(&engine, k, k, 60);
-        must_commit(&engine, k, 60, 70);
+        commit::tests::must_success(&engine, k, 60, 70);
         assert_eq!(
             must_acquire_pessimistic_lock_return_value(&engine, k, k, 75, 75),
             None
@@ -2594,14 +2594,14 @@ mod tests {
         // Key not exist; should succeed.
         fail_to_write_pessimistic_lock(&engine, k, 10, 10);
         must_pipelined_pessimistic_prewrite_put(&engine, k, &v, k, 10, 10, true);
-        must_commit(&engine, k, 10, 20);
+        commit::tests::must_success(&engine, k, 10, 20);
         must_get(&engine, k, 20, &v);
 
         // for_update_ts(30) >= start_ts(30) > commit_ts(20); should succeed.
         v.push(0);
         fail_to_write_pessimistic_lock(&engine, k, 30, 30);
         must_pipelined_pessimistic_prewrite_put(&engine, k, &v, k, 30, 30, true);
-        must_commit(&engine, k, 30, 40);
+        commit::tests::must_success(&engine, k, 30, 40);
         must_get(&engine, k, 40, &v);
 
         // for_update_ts(40) >= commit_ts(40) > start_ts(35); should fail.
@@ -2862,7 +2862,7 @@ mod tests {
         // Prepare a committed transaction.
         must_prewrite_put(&engine, k, v, k, 10);
         must_locked(&engine, k, 10);
-        must_commit(&engine, k, 10, 20);
+        commit::tests::must_success(&engine, k, 10, 20);
         must_unlocked(&engine, k);
         must_written(&engine, k, 10, 20, WriteType::Put);
 
@@ -2870,7 +2870,7 @@ mod tests {
         // on the same key.
         must_prewrite_put(&engine, k, v, k, 20);
         must_locked(&engine, k, 20);
-        must_commit(&engine, k, 20, 30);
+        commit::tests::must_success(&engine, k, 20, 30);
         must_unlocked(&engine, k);
 
         // ...but it can be rejected by overlapped rollback flag.
@@ -2884,7 +2884,7 @@ mod tests {
         // Prepare a committed transaction.
         must_prewrite_put(&engine, k, v, k, 40);
         must_locked(&engine, k, 40);
-        must_commit(&engine, k, 40, 50);
+        commit::tests::must_success(&engine, k, 40, 50);
         must_unlocked(&engine, k);
         must_written(&engine, k, 40, 50, WriteType::Put);
 
@@ -2892,7 +2892,7 @@ mod tests {
         must_acquire_pessimistic_lock(&engine, k, k, 50, 50);
         must_pessimistic_locked(&engine, k, 50, 50);
         must_pessimistic_prewrite_put(&engine, k, v, k, 50, 50, true);
-        must_commit(&engine, k, 50, 60);
+        commit::tests::must_success(&engine, k, 50, 60);
         must_unlocked(&engine, k);
         must_written(&engine, k, 50, 60, WriteType::Put);
 
@@ -2912,13 +2912,13 @@ mod tests {
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 10, 0);
         cleanup::tests::must_success(&engine, k, 15, 0);
-        must_commit(&engine, k, 10, 15);
+        commit::tests::must_success(&engine, k, 10, 15);
         let w = must_written(&engine, k, 10, 15, WriteType::Put);
         assert!(w.has_overlapped_rollback);
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 20, 0);
         check_txn_status::tests::must_success(&engine, k, 25, 0, 0, true, TxnStatus::LockNotExist);
-        must_commit(&engine, k, 20, 25);
+        commit::tests::must_success(&engine, k, 20, 25);
         let w = must_written(&engine, k, 20, 25, WriteType::Put);
         assert!(w.has_overlapped_rollback);
 
@@ -2929,14 +2929,14 @@ mod tests {
             35,
             SecondaryLocksStatus::RolledBack,
         );
-        must_commit(&engine, k, 30, 35);
+        commit::tests::must_success(&engine, k, 30, 35);
         let w = must_written(&engine, k, 30, 35, WriteType::Put);
         assert!(w.has_overlapped_rollback);
 
         // Do not commit with overlapped_rollback if the rollback ts doesn't equal to commit_ts.
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 40, 0);
         cleanup::tests::must_success(&engine, k, 44, 0);
-        must_commit(&engine, k, 40, 45);
+        commit::tests::must_success(&engine, k, 40, 45);
         let w = must_written(&engine, k, 40, 45, WriteType::Put);
         assert!(!w.has_overlapped_rollback);
 
@@ -2946,13 +2946,13 @@ mod tests {
         cleanup::tests::must_success(&engine, k, 55, 0);
         let l = must_locked(&engine, k, 50);
         assert!(l.rollback_ts.is_empty());
-        must_commit(&engine, k, 50, 56);
+        commit::tests::must_success(&engine, k, 50, 56);
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 60, 0);
         cleanup::tests::must_success(&engine, k, 59, 0);
         let l = must_locked(&engine, k, 60);
         assert!(l.rollback_ts.is_empty());
-        must_commit(&engine, k, 60, 65);
+        commit::tests::must_success(&engine, k, 60, 65);
 
         must_prewrite_put_async_commit(&engine, k, v, k, &Some(vec![]), 70, 75);
         cleanup::tests::must_success(&engine, k, 74, 0);

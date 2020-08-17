@@ -432,6 +432,7 @@ mod tests {
     use super::*;
     use crate::storage::kv::{Engine, TestEngineBuilder};
     use crate::storage::mvcc::tests::*;
+    use crate::storage::txn::commands::commit;
     use crate::storage::Scanner;
     use kvproto::kvrpcpb::Context;
 
@@ -443,14 +444,14 @@ mod tests {
         let k = &[10 as u8];
         for ts in 0..REVERSE_SEEK_BOUND / 2 {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
 
         // Generate REVERSE_SEEK_BOUND + 1 Put for key [9].
         let k = &[9 as u8];
         for ts in 0..=REVERSE_SEEK_BOUND {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
 
         // Generate REVERSE_SEEK_BOUND / 2 Put and REVERSE_SEEK_BOUND / 2 + 1 Rollback for key [8].
@@ -458,7 +459,7 @@ mod tests {
         for ts in 0..=REVERSE_SEEK_BOUND {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
             if ts < REVERSE_SEEK_BOUND / 2 {
-                must_commit(&engine, k, ts, ts);
+                commit::tests::must_success(&engine, k, ts, ts);
             } else {
                 must_rollback(&engine, k, ts);
             }
@@ -469,12 +470,12 @@ mod tests {
         let k = &[7 as u8];
         for ts in 0..REVERSE_SEEK_BOUND / 2 {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
         {
             let ts = REVERSE_SEEK_BOUND / 2;
             must_prewrite_delete(&engine, k, k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
         for ts in REVERSE_SEEK_BOUND / 2 + 1..=REVERSE_SEEK_BOUND {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
@@ -485,7 +486,7 @@ mod tests {
         let k = &[6 as u8];
         for ts in 0..1 {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
 
         // Generate REVERSE_SEEK_BOUND + 1 Rollback for key [5].
@@ -500,7 +501,7 @@ mod tests {
         let k = &[4 as u8];
         for ts in REVERSE_SEEK_BOUND..REVERSE_SEEK_BOUND + 2 {
             must_prewrite_put(&engine, k, &[ts as u8], k, ts);
-            must_commit(&engine, k, ts, ts);
+            commit::tests::must_success(&engine, k, ts, ts);
         }
 
         // Assume REVERSE_SEEK_BOUND == 4, we have keys:
@@ -694,7 +695,7 @@ mod tests {
 
         // Generate 1 put for [c].
         must_prewrite_put(&engine, b"c", b"value", b"c", REVERSE_SEEK_BOUND * 2);
-        must_commit(
+        commit::tests::must_success(
             &engine,
             b"c",
             REVERSE_SEEK_BOUND * 2,
@@ -757,14 +758,14 @@ mod tests {
 
         // Generate 1 put and N/2 rollback for [b].
         must_prewrite_put(&engine, b"b", b"value_b", b"b", 0);
-        must_commit(&engine, b"b", 0, 0);
+        commit::tests::must_success(&engine, b"b", 0, 0);
         for ts in 1..=REVERSE_SEEK_BOUND / 2 {
             must_rollback(&engine, b"b", ts);
         }
 
         // Generate 1 put for [c].
         must_prewrite_put(&engine, b"c", b"value_c", b"c", REVERSE_SEEK_BOUND * 2);
-        must_commit(
+        commit::tests::must_success(
             &engine,
             b"c",
             REVERSE_SEEK_BOUND * 2,
@@ -830,12 +831,12 @@ mod tests {
 
         // Generate 1 put for [c].
         must_prewrite_put(&engine, b"c", b"value", b"c", 1);
-        must_commit(&engine, b"c", 1, 1);
+        commit::tests::must_success(&engine, b"c", 1, 1);
 
         // Generate N/2 put for [b] .
         for ts in 1..=SEEK_BOUND / 2 {
             must_prewrite_put(&engine, b"b", &[ts as u8], b"b", ts);
-            must_commit(&engine, b"b", ts, ts);
+            commit::tests::must_success(&engine, b"b", ts, ts);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -901,12 +902,12 @@ mod tests {
 
         // Generate 1 put for [c].
         must_prewrite_put(&engine, b"c", b"value", b"c", 1);
-        must_commit(&engine, b"c", 1, 1);
+        commit::tests::must_success(&engine, b"c", 1, 1);
 
         // Generate N+1 put for [b] .
         for ts in 1..SEEK_BOUND + 2 {
             must_prewrite_put(&engine, b"b", &[ts as u8], b"b", ts);
-            must_commit(&engine, b"b", ts, ts);
+            commit::tests::must_success(&engine, b"b", ts, ts);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -980,12 +981,12 @@ mod tests {
 
         // Generate 1 put for [c].
         must_prewrite_put(&engine, b"c", b"value", b"c", 1);
-        must_commit(&engine, b"c", 1, 1);
+        commit::tests::must_success(&engine, b"c", 1, 1);
 
         // Generate N+M+1 put for [b] .
         for ts in 1..SEEK_BOUND + REVERSE_SEEK_BOUND + 2 {
             must_prewrite_put(&engine, b"b", &[ts as u8], b"b", ts);
-            must_commit(&engine, b"b", ts, ts);
+            commit::tests::must_success(&engine, b"b", ts, ts);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -1062,15 +1063,15 @@ mod tests {
         for i in 1..7 {
             // ts = 1: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 1);
-            must_commit(&engine, &[i], 1, 1);
+            commit::tests::must_success(&engine, &[i], 1, 1);
 
             // ts = 7: value = [ts]
             must_prewrite_put(&engine, &[i], &[i], &[i], 7);
-            must_commit(&engine, &[i], 7, 7);
+            commit::tests::must_success(&engine, &[i], 7, 7);
 
             // ts = 14: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 14);
-            must_commit(&engine, &[i], 14, 14);
+            commit::tests::must_success(&engine, &[i], 14, 14);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();

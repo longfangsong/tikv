@@ -876,8 +876,8 @@ mod latest_kv_tests {
     use super::*;
     use crate::storage::kv::{Engine, TestEngineBuilder};
     use crate::storage::mvcc::tests::*;
+    use crate::storage::txn::commands::commit;
     use crate::storage::Scanner;
-
     use kvproto::kvrpcpb::Context;
 
     /// Check whether everything works as usual when `ForwardKvScanner::get()` goes out of bound.
@@ -887,7 +887,7 @@ mod latest_kv_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"value", b"a", 7);
-        must_commit(&engine, b"a", 7, 7);
+        commit::tests::must_success(&engine, b"a", 7, 7);
 
         // Generate 5 rollback for [b].
         for ts in 0..5 {
@@ -939,14 +939,14 @@ mod latest_kv_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND / 2 rollback and 1 put for [b] .
         for ts in 0..SEEK_BOUND / 2 {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND / 2);
-        must_commit(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1002,14 +1002,14 @@ mod latest_kv_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND-1 rollback and 1 put for [b] .
         for ts in 1..SEEK_BOUND {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND);
-        must_commit(&engine, b"b", SEEK_BOUND, SEEK_BOUND);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND, SEEK_BOUND);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1067,15 +1067,15 @@ mod latest_kv_tests {
         for i in 1..7 {
             // ts = 1: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 1);
-            must_commit(&engine, &[i], 1, 1);
+            commit::tests::must_success(&engine, &[i], 1, 1);
 
             // ts = 7: value = [ts]
             must_prewrite_put(&engine, &[i], &[i], &[i], 7);
-            must_commit(&engine, &[i], 7, 7);
+            commit::tests::must_success(&engine, &[i], 7, 7);
 
             // ts = 14: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 14);
-            must_commit(&engine, &[i], 14, 14);
+            commit::tests::must_success(&engine, &[i], 14, 14);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -1163,8 +1163,8 @@ mod latest_entry_tests {
     use super::super::ScannerBuilder;
     use super::*;
     use crate::storage::mvcc::tests::*;
+    use crate::storage::txn::commands::commit;
     use crate::storage::{Engine, TestEngineBuilder};
-
     use kvproto::kvrpcpb::Context;
 
     use super::test_util::EntryBuilder;
@@ -1176,7 +1176,7 @@ mod latest_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"value", b"a", 7);
-        must_commit(&engine, b"a", 7, 7);
+        commit::tests::must_success(&engine, b"a", 7, 7);
 
         // Generate 5 rollback for [b].
         for ts in 0..5 {
@@ -1233,14 +1233,14 @@ mod latest_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND / 2 rollback and 1 put for [b] .
         for ts in 0..SEEK_BOUND / 2 {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND / 2);
-        must_commit(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1302,14 +1302,14 @@ mod latest_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND-1 rollback and 1 put for [b] .
         for ts in 1..SEEK_BOUND {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND);
-        must_commit(&engine, b"b", SEEK_BOUND, SEEK_BOUND);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND, SEEK_BOUND);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1373,15 +1373,15 @@ mod latest_entry_tests {
         for i in 1..7 {
             // ts = 1: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 1);
-            must_commit(&engine, &[i], 1, 1);
+            commit::tests::must_success(&engine, &[i], 1, 1);
 
             // ts = 7: value = [ts]
             must_prewrite_put(&engine, &[i], &[i], &[i], 7);
-            must_commit(&engine, &[i], 7, 7);
+            commit::tests::must_success(&engine, &[i], 7, 7);
 
             // ts = 14: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 14);
-            must_commit(&engine, &[i], 14, 14);
+            commit::tests::must_success(&engine, &[i], 14, 14);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -1443,15 +1443,15 @@ mod latest_entry_tests {
 
         // Generate put for [a] at 3.
         must_prewrite_put(&engine, b"a", b"a_3", b"a", 3);
-        must_commit(&engine, b"a", 3, 3);
+        commit::tests::must_success(&engine, b"a", 3, 3);
 
         // Generate put for [a] at 7.
         must_prewrite_put(&engine, b"a", b"a_7", b"a", 7);
-        must_commit(&engine, b"a", 7, 7);
+        commit::tests::must_success(&engine, b"a", 7, 7);
 
         // Generate put for [b] at 1.
         must_prewrite_put(&engine, b"b", b"b_1", b"b", 1);
-        must_commit(&engine, b"b", 1, 1);
+        commit::tests::must_success(&engine, b"b", 1, 1);
 
         // Generate rollbacks for [b] at 2, 3, 4.
         for ts in 2..5 {
@@ -1460,7 +1460,7 @@ mod latest_entry_tests {
 
         // Generate delete for [b] at 10.
         must_prewrite_delete(&engine, b"b", b"b", 10);
-        must_commit(&engine, b"b", 10, 10);
+        commit::tests::must_success(&engine, b"b", 10, 10);
 
         let entry_a_3 = EntryBuilder::default()
             .key(b"a")
@@ -1515,12 +1515,11 @@ mod latest_entry_tests {
 
 #[cfg(test)]
 mod delta_entry_tests {
-
     use super::super::ScannerBuilder;
     use super::*;
     use crate::storage::mvcc::tests::*;
+    use crate::storage::txn::commands::commit;
     use crate::storage::{Engine, TestEngineBuilder};
-
     use kvproto::kvrpcpb::Context;
     use txn_types::{is_short_value, SHORT_VALUE_MAX_LEN};
 
@@ -1533,7 +1532,7 @@ mod delta_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"value", b"a", 7);
-        must_commit(&engine, b"a", 7, 7);
+        commit::tests::must_success(&engine, b"a", 7, 7);
 
         // Generate 5 rollback for [b].
         for ts in 0..5 {
@@ -1590,14 +1589,14 @@ mod delta_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND / 2 rollback and 1 put for [b] .
         for ts in 0..SEEK_BOUND / 2 {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND / 2);
-        must_commit(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND / 2, SEEK_BOUND / 2);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1659,7 +1658,7 @@ mod delta_entry_tests {
 
         // Generate 1 put for [a].
         must_prewrite_put(&engine, b"a", b"a_value", b"a", SEEK_BOUND * 2);
-        must_commit(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
+        commit::tests::must_success(&engine, b"a", SEEK_BOUND * 2, SEEK_BOUND * 2);
 
         // Generate SEEK_BOUND rollback and 1 put for [b] .
         // It differs from EntryScanner that this will try to fetch multiple versions of each key.
@@ -1668,7 +1667,7 @@ mod delta_entry_tests {
             must_rollback(&engine, b"b", ts as u64);
         }
         must_prewrite_put(&engine, b"b", b"b_value", b"a", SEEK_BOUND + 1);
-        must_commit(&engine, b"b", SEEK_BOUND + 1, SEEK_BOUND + 1);
+        commit::tests::must_success(&engine, b"b", SEEK_BOUND + 1, SEEK_BOUND + 1);
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
         let mut scanner = ScannerBuilder::new(snapshot, (SEEK_BOUND * 2).into(), false)
@@ -1732,15 +1731,15 @@ mod delta_entry_tests {
         for i in 1..7 {
             // ts = 1: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 1);
-            must_commit(&engine, &[i], 1, 1);
+            commit::tests::must_success(&engine, &[i], 1, 1);
 
             // ts = 7: value = [ts]
             must_prewrite_put(&engine, &[i], &[i], &[i], 7);
-            must_commit(&engine, &[i], 7, 7);
+            commit::tests::must_success(&engine, &[i], 7, 7);
 
             // ts = 14: value = []
             must_prewrite_put(&engine, &[i], &[], &[i], 14);
-            must_commit(&engine, &[i], 14, 14);
+            commit::tests::must_success(&engine, &[i], 14, 14);
         }
 
         let snapshot = engine.snapshot(&Context::default()).unwrap();
@@ -1956,7 +1955,7 @@ mod delta_entry_tests {
                     WriteType::Rollback => must_rollback(&engine, key, start_ts),
                 }
                 if *write_type != WriteType::Rollback {
-                    must_commit(&engine, key, start_ts, commit_ts);
+                    commit::tests::must_success(&engine, key, start_ts, commit_ts);
                 }
             }
 
@@ -2048,18 +2047,18 @@ mod delta_entry_tests {
 
         // Generate put for [a] at 1.
         must_prewrite_put(&engine, b"a", b"a_1", b"a", 1);
-        must_commit(&engine, b"a", 1, 1);
+        commit::tests::must_success(&engine, b"a", 1, 1);
 
         // Generate put for [a] at 3.
         must_prewrite_put(&engine, b"a", b"a_3", b"a", 3);
-        must_commit(&engine, b"a", 3, 3);
+        commit::tests::must_success(&engine, b"a", 3, 3);
 
         // Generate delete for [a] at 5.
         must_prewrite_delete(&engine, b"a", b"a", 5);
 
         // Generate put for [b] at 2.
         must_prewrite_put(&engine, b"b", b"b_2", b"b", 2);
-        must_commit(&engine, b"b", 2, 2);
+        commit::tests::must_success(&engine, b"b", 2, 2);
 
         // Generate rollbacks for [b] at 6, 7, 8.
         for ts in 6..9 {
@@ -2068,7 +2067,7 @@ mod delta_entry_tests {
 
         // Generate delete for [b] at 10.
         must_prewrite_delete(&engine, b"b", b"b", 10);
-        must_commit(&engine, b"b", 10, 10);
+        commit::tests::must_success(&engine, b"b", 10, 10);
 
         // Generate put for [b] at 15.
         must_acquire_pessimistic_lock(&engine, b"b", b"b", 9, 15);

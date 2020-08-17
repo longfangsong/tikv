@@ -165,7 +165,7 @@ pub mod tests {
     use crate::storage::kv::{Engine, WriteData};
     use crate::storage::lock_manager::DummyLockManager;
     use crate::storage::mvcc::tests::*;
-    use crate::storage::txn::commands::{pessimistic_rollback, WriteCommand, WriteContext};
+    use crate::storage::txn::commands::{commit, pessimistic_rollback, WriteCommand, WriteContext};
     use crate::storage::{
         concurrency_manager::ConcurrencyManager, types::TxnStatus, ProcessResult, TestEngineBuilder,
     };
@@ -433,7 +433,7 @@ pub mod tests {
         );
         must_large_txn_locked(&engine, k, ts(5, 0), 100, ts(13, 3), false);
 
-        must_commit(&engine, k, ts(5, 0), ts(15, 0));
+        commit::tests::must_success(&engine, k, ts(5, 0), ts(15, 0));
         must_unlocked(&engine, k);
 
         // Check committed key will get the commit ts.
@@ -519,7 +519,7 @@ pub mod tests {
 
         // Commit the key.
         must_pessimistic_prewrite_put(&engine, k, v, k, ts(4, 0), ts(130, 0), true);
-        must_commit(&engine, k, ts(4, 0), ts(140, 0));
+        commit::tests::must_success(&engine, k, ts(4, 0), ts(140, 0));
         must_unlocked(&engine, k);
         must_get_commit_ts(&engine, k, ts(4, 0), ts(140, 0));
 
@@ -666,7 +666,7 @@ pub mod tests {
             r,
             uncommitted(100, ts(310, 1), false, vec![]),
         );
-        must_commit(&engine, k, ts(310, 0), ts(315, 0));
+        commit::tests::must_success(&engine, k, ts(310, 0), ts(315, 0));
         must_success(
             &engine,
             k,

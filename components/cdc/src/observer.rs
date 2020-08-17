@@ -316,6 +316,7 @@ mod tests {
     use std::time::Duration;
     use tikv::storage::kv::TestEngineBuilder;
     use tikv::storage::mvcc::tests::*;
+    use tikv::storage::txn::commands::commit;
 
     #[test]
     fn test_register_and_deregister() {
@@ -406,7 +407,7 @@ mod tests {
         must_prewrite_put(&engine, k, b"v1", k, 1);
         must_get_eq(2, None);
         must_get_eq(1, Some(vec![]));
-        must_commit(&engine, k, 1, 1);
+        commit::tests::must_success(&engine, k, 1, 1);
         must_get_eq(1, Some(vec![]));
 
         must_prewrite_put(&engine, k, b"v2", k, 2);
@@ -415,15 +416,15 @@ mod tests {
 
         must_prewrite_put(&engine, k, b"v3", k, 3);
         must_get_eq(3, Some(b"v1".to_vec()));
-        must_commit(&engine, k, 3, 3);
+        commit::tests::must_success(&engine, k, 3, 3);
 
         must_prewrite_delete(&engine, k, k, 4);
         must_get_eq(4, Some(b"v3".to_vec()));
-        must_commit(&engine, k, 4, 4);
+        commit::tests::must_success(&engine, k, 4, 4);
 
         must_prewrite_put(&engine, k, vec![b'v'; 5120].as_slice(), k, 5);
         must_get_eq(5, Some(vec![]));
-        must_commit(&engine, k, 5, 5);
+        commit::tests::must_success(&engine, k, 5, 5);
 
         must_prewrite_delete(&engine, k, k, 6);
         must_get_eq(6, Some(vec![b'v'; 5120]));

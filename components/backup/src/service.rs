@@ -142,7 +142,7 @@ mod tests {
                 start,
             );
             let commit = alloc_ts();
-            must_commit(&engine, key.as_bytes(), start, commit);
+            commit::tests::must_success(&engine, key.as_bytes(), start, commit);
         }
 
         let now = alloc_ts();

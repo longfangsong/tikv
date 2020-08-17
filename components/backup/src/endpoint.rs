@@ -65,6 +65,7 @@ impl fmt::Display for Task {
         write!(f, "{:?}", self)
     }
 }
+
 impl fmt::Debug for Task {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BackupTask")
@@ -875,6 +876,7 @@ pub mod tests {
     use std::thread;
     use tempfile::TempDir;
     use tikv::storage::mvcc::tests::*;
+    use tikv::storage::txn::commands::commit;
     use tikv::storage::{RocksEngine, TestEngineBuilder};
     use tikv_util::time::Instant;
     use txn_types::SHORT_VALUE_MAX_LEN;
@@ -884,6 +886,7 @@ pub mod tests {
         regions: Arc<Mutex<RegionCollector>>,
         cancel: Option<Arc<AtomicBool>>,
     }
+
     impl MockRegionInfoProvider {
         pub fn new() -> Self {
             MockRegionInfoProvider {
@@ -912,6 +915,7 @@ pub mod tests {
             self.cancel = Some(cancel);
         }
     }
+
     impl RegionInfoProvider for MockRegionInfoProvider {
         fn seek_region(&self, from: &[u8], callback: SeekRegionCallback) -> CopResult<()> {
             let from = from.to_vec();
@@ -960,6 +964,7 @@ pub mod tests {
         let (none, _rx) = block_on(rx.into_future());
         assert!(none.is_none(), "{:?}", none);
     }
+
     #[test]
     fn test_seek_range() {
         let (_tmp, endpoint) = new_endpoint();
@@ -1124,7 +1129,7 @@ pub mod tests {
                     key.as_bytes(),
                     start,
                 );
-                must_commit(&engine, key.as_bytes(), start, commit);
+                commit::tests::must_success(&engine, key.as_bytes(), start, commit);
                 backup_tss.push((alloc_ts(), len));
             }
         }
@@ -1210,8 +1215,8 @@ pub mod tests {
         });
 
         // Commit the perwrite.
-        let commit = alloc_ts();
-        must_commit(&engine, key.as_bytes(), start, commit);
+        let commit_ts = alloc_ts();
+        commit::tests::must_success(&engine, key.as_bytes(), start, commit_ts);
 
         // Test whether it can correctly convert not leader to region error.
         engine.trigger_not_leader();
@@ -1256,7 +1261,7 @@ pub mod tests {
         );
         // Commit the perwrite.
         let commit = alloc_ts();
-        must_commit(&engine, key.as_bytes(), start, commit);
+        commit::tests::must_success(&engine, key.as_bytes(), start, commit);
 
         let now = alloc_ts();
         let mut req = BackupRequest::default();

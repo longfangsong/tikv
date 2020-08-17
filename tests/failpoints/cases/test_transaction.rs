@@ -12,6 +12,6 @@ fn test_txn_failpoints() {
     fail::remove("prewrite");
     must_prewrite_put(&engine, k, v, k, 10);
     fail::cfg("commit", "delay(100)").unwrap();
-    must_commit(&engine, k, 10, 20);
+    commit::tests::must_success(&engine, k, 10, 20);
     fail::remove("commit");
 }

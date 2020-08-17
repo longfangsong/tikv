@@ -3,23 +3,23 @@
 //! Commands used in the transaction system
 #[macro_use]
 mod macros;
-pub(crate) mod acquire_pessimistic_lock;
-pub(crate) mod check_secondary_locks;
-pub(crate) mod check_txn_status;
-pub(crate) mod cleanup;
-pub(crate) mod commit;
-pub(crate) mod mvcc_by_key;
-pub(crate) mod mvcc_by_start_ts;
-pub(crate) mod pause;
-pub(crate) mod pessimistic_rollback;
-pub(crate) mod prewrite;
-pub(crate) mod prewrite_pessimistic;
-pub(crate) mod resolve_lock;
-pub(crate) mod resolve_lock_lite;
-pub(crate) mod resolve_lock_readphase;
-pub(crate) mod rollback;
-pub(crate) mod scan_lock;
-pub(crate) mod txn_heart_beat;
+pub mod acquire_pessimistic_lock;
+pub mod check_secondary_locks;
+pub mod check_txn_status;
+pub mod cleanup;
+pub mod commit;
+pub mod mvcc_by_key;
+pub mod mvcc_by_start_ts;
+pub mod pause;
+pub mod pessimistic_rollback;
+pub mod prewrite;
+pub mod prewrite_pessimistic;
+pub mod resolve_lock;
+pub mod resolve_lock_lite;
+pub mod resolve_lock_readphase;
+pub mod rollback;
+pub mod scan_lock;
+pub mod txn_heart_beat;
 
 pub use acquire_pessimistic_lock::AcquirePessimisticLock;
 pub use check_secondary_locks::CheckSecondaryLocks;
