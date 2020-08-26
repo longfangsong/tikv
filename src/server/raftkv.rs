@@ -212,11 +212,11 @@ impl<S: RaftStoreRouter<RocksEngine>> RaftKv<S> {
         cb: Callback<CmdRes>,
     ) -> Result<()> {
         #[cfg(feature = "failpoints")]
-        {
-            // If rid is some, only the specified region reports error.
-            // If rid is None, all regions report error.
-            let raftkv_early_error_report_fp = || -> Result<()> {
-                fail_point!("raftkv_early_error_report", |rid| {
+            {
+                // If rid is some, only the specified region reports error.
+                // If rid is None, all regions report error.
+                let raftkv_early_error_report_fp = || -> Result<()> {
+                    fail_point!("raftkv_early_error_report", |rid| {
                     let region_id = ctx.get_region_id();
                     rid.and_then(|rid| {
                         let rid: u64 = rid.parse().unwrap();
@@ -228,10 +228,10 @@ impl<S: RaftStoreRouter<RocksEngine>> RaftKv<S> {
                     })
                     .ok_or_else(|| RaftServerError::RegionNotFound(region_id).into())
                 });
-                Ok(())
-            };
-            raftkv_early_error_report_fp()?;
-        }
+                    Ok(())
+                };
+                raftkv_early_error_report_fp()?;
+            }
 
         let len = reqs.len();
         let header = self.new_request_header(ctx);
@@ -292,6 +292,8 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
     }
 
     fn modify_on_kv_engine(&self, mut modifies: Vec<Modify>) -> kv::Result<()> {
+        let start_time = Instant::now();
+        info!("start modify_on_kv_engine");
         for modify in &mut modifies {
             match modify {
                 Modify::Delete(_, ref mut key) => {
@@ -310,10 +312,14 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
                 }
             }
         }
-        write_modifies(&self.engine, modifies)
+        let result = write_modifies(&self.engine, modifies);
+        info!("modify_on_kv_engine end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     fn async_write(&self, ctx: &Context, batch: WriteData, cb: Callback<()>) -> kv::Result<()> {
+        let start_time = Instant::now();
+        info!("start async_write");
         fail_point!("raftkv_async_write");
         if batch.modifies.is_empty() {
             return Err(KvError::from(KvErrorInner::EmptyRequest));
@@ -358,7 +364,7 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
         ASYNC_REQUESTS_COUNTER_VEC.write.all.inc();
         let begin_instant = Instant::now_coarse();
 
-        self.exec_write_requests(
+        let result = self.exec_write_requests(
             ctx,
             reqs,
             batch.extra,
@@ -382,11 +388,13 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
                 }
             }),
         )
-        .map_err(|e| {
-            let status_kind = get_status_kind_from_error(&e);
-            ASYNC_REQUESTS_COUNTER_VEC.write.get(status_kind).inc();
-            e.into()
-        })
+            .map_err(|e| {
+                let status_kind = get_status_kind_from_error(&e);
+                ASYNC_REQUESTS_COUNTER_VEC.write.get(status_kind).inc();
+                e.into()
+            });
+        info!("async_write end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     fn async_snapshot(
@@ -395,11 +403,13 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
         read_id: Option<ThreadReadId>,
         cb: Callback<Self::Snap>,
     ) -> kv::Result<()> {
+        let start_time = Instant::now();
+        info!("start async_snapshot");
         let mut req = Request::default();
         req.set_cmd_type(CmdType::Snap);
         ASYNC_REQUESTS_COUNTER_VEC.snapshot.all.inc();
         let begin_instant = Instant::now_coarse();
-        self.exec_snapshot(
+        let result = self.exec_snapshot(
             read_id,
             ctx,
             req,
@@ -422,15 +432,20 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
                 }
             }),
         )
-        .map_err(|e| {
-            let status_kind = get_status_kind_from_error(&e);
-            ASYNC_REQUESTS_COUNTER_VEC.snapshot.get(status_kind).inc();
-            e.into()
-        })
+            .map_err(|e| {
+                let status_kind = get_status_kind_from_error(&e);
+                ASYNC_REQUESTS_COUNTER_VEC.snapshot.get(status_kind).inc();
+                e.into()
+            });
+        info!("async_snapshot end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     fn release_snapshot(&self) {
+        let start_time = Instant::now();
+        info!("start release_snapshot");
         self.router.release_snapshot_cache();
+        info!("release_snapshot end {}", start_time.elapsed().as_nanos());
     }
 
     fn get_properties_cf(
@@ -439,11 +454,15 @@ impl<S: RaftStoreRouter<RocksEngine>> Engine for RaftKv<S> {
         start: &[u8],
         end: &[u8],
     ) -> kv::Result<RocksTablePropertiesCollection> {
+        let start_time = Instant::now();
+        info!("start get_properties_cf");
         let start = keys::data_key(start);
         let end = keys::data_end_key(end);
-        self.engine
+        let result = self.engine
             .get_range_properties_cf(cf, &start, &end)
-            .map_err(|e| e.into())
+            .map_err(|e| e.into());
+        info!("get_properties_cf end {}", start_time.elapsed().as_nanos());
+        result
     }
 }
 

@@ -18,6 +18,7 @@ use keys::DATA_PREFIX_KEY;
 use tikv_util::keybuilder::KeyBuilder;
 use tikv_util::metrics::CRITICAL_ERROR;
 use tikv_util::{panic_when_unexpected_key_or_data, set_panic_mark};
+use std::time::Instant;
 
 /// Snapshot of a region.
 ///
@@ -32,8 +33,8 @@ pub struct RegionSnapshot<S: Snapshot> {
 }
 
 impl<S> RegionSnapshot<S>
-where
-    S: Snapshot,
+    where
+        S: Snapshot,
 {
     #[allow(clippy::new_ret_no_self)] // temporary until this returns RegionSnapshot<E>
     pub fn new(ps: &PeerStorage<RocksEngine, RocksEngine>) -> RegionSnapshot<RocksSnapshot> {
@@ -76,17 +77,21 @@ where
     }
 
     fn get_apply_index_from_storage(&self) -> Result<u64> {
+        let start_time = Instant::now();
+        info!("get_apply_index_from_storage start");
         let apply_state: Option<RaftApplyState> = self
             .snap
             .get_msg_cf(CF_RAFT, &keys::apply_state_key(self.region.get_id()))?;
-        match apply_state {
+        let result = match apply_state {
             Some(s) => {
                 let apply_index = s.get_applied_index();
                 self.apply_index.store(apply_index, Ordering::SeqCst);
                 Ok(apply_index)
             }
             None => Err(box_err!("Unable to get applied index")),
-        }
+        };
+        info!("get_apply_index_from_storage end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn iter(&self, iter_opt: IterOptions) -> RegionIterator<S> {
@@ -105,13 +110,17 @@ where
     // scan scans database using an iterator in range [start_key, end_key), calls function f for
     // each iteration, if f returns false, terminates this scan.
     pub fn scan<F>(&self, start_key: &[u8], end_key: &[u8], fill_cache: bool, f: F) -> Result<()>
-    where
-        F: FnMut(&[u8], &[u8]) -> Result<bool>,
+        where
+            F: FnMut(&[u8], &[u8]) -> Result<bool>,
     {
+        let start_time = Instant::now();
+        info!("scan start");
         let start = KeyBuilder::from_slice(start_key, DATA_PREFIX_KEY.len(), 0);
         let end = KeyBuilder::from_slice(end_key, DATA_PREFIX_KEY.len(), 0);
         let iter_opt = IterOptions::new(Some(start), Some(end), fill_cache);
-        self.scan_impl(self.iter(iter_opt), start_key, f)
+        let result = self.scan_impl(self.iter(iter_opt), start_key, f);
+        info!("scan end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     // like `scan`, only on a specific column family.
@@ -123,18 +132,22 @@ where
         fill_cache: bool,
         f: F,
     ) -> Result<()>
-    where
-        F: FnMut(&[u8], &[u8]) -> Result<bool>,
+        where
+            F: FnMut(&[u8], &[u8]) -> Result<bool>,
     {
+        let start_time = Instant::now();
+        info!("scan_cf start");
         let start = KeyBuilder::from_slice(start_key, DATA_PREFIX_KEY.len(), 0);
         let end = KeyBuilder::from_slice(end_key, DATA_PREFIX_KEY.len(), 0);
         let iter_opt = IterOptions::new(Some(start), Some(end), fill_cache);
-        self.scan_impl(self.iter_cf(cf, iter_opt)?, start_key, f)
+        let result = self.scan_impl(self.iter_cf(cf, iter_opt)?, start_key, f);
+        info!("scan_cf end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     fn scan_impl<F>(&self, mut it: RegionIterator<S>, start_key: &[u8], mut f: F) -> Result<()>
-    where
-        F: FnMut(&[u8], &[u8]) -> Result<bool>,
+        where
+            F: FnMut(&[u8], &[u8]) -> Result<bool>,
     {
         let mut it_valid = it.seek(start_key)?;
         while it_valid {
@@ -155,8 +168,8 @@ where
 }
 
 impl<S> Clone for RegionSnapshot<S>
-where
-    S: Snapshot,
+    where
+        S: Snapshot,
 {
     fn clone(&self) -> Self {
         RegionSnapshot {
@@ -169,8 +182,8 @@ where
 }
 
 impl<S> Peekable for RegionSnapshot<S>
-where
-    S: Snapshot,
+    where
+        S: Snapshot,
 {
     type DBVector = <S as Peekable>::DBVector;
 
@@ -185,7 +198,7 @@ where
             self.region.get_start_key(),
             self.region.get_end_key(),
         )
-        .map_err(|e| EngineError::Other(box_err!(e)))?;
+            .map_err(|e| EngineError::Other(box_err!(e)))?;
         let data_key = keys::data_key(key);
         self.snap
             .get_value_opt(opts, &data_key)
@@ -204,7 +217,7 @@ where
             self.region.get_start_key(),
             self.region.get_end_key(),
         )
-        .map_err(|e| EngineError::Other(box_err!(e)))?;
+            .map_err(|e| EngineError::Other(box_err!(e)))?;
         let data_key = keys::data_key(key);
         self.snap
             .get_value_cf_opt(opts, cf, &data_key)
@@ -213,8 +226,8 @@ where
 }
 
 impl<S> RegionSnapshot<S>
-where
-    S: Snapshot,
+    where
+        S: Snapshot,
 {
     #[inline(never)]
     fn handle_get_value_error(&self, e: EngineError, cf: &str, key: &[u8]) -> EngineError {
@@ -274,8 +287,8 @@ fn update_upper_bound(iter_opt: &mut IterOptions, region: &Region) {
 
 // we use engine::rocks's style iterator, doesn't need to impl std iterator.
 impl<S> RegionIterator<S>
-where
-    S: Snapshot,
+    where
+        S: Snapshot,
 {
     pub fn new(snap: &S, region: Arc<Region>, mut iter_opt: IterOptions) -> RegionIterator<S> {
         update_lower_bound(&mut iter_opt, &region);
@@ -301,36 +314,60 @@ where
     }
 
     pub fn seek_to_first(&mut self) -> Result<bool> {
-        self.iter.seek_to_first().map_err(Error::from)
+        let start_time = Instant::now();
+        info!("seek_to_first start");
+        let result = self.iter.seek_to_first().map_err(Error::from);
+        info!("seek_to_first end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn seek_to_last(&mut self) -> Result<bool> {
-        self.iter.seek_to_last().map_err(Error::from)
+        let start_time = Instant::now();
+        info!("seek_to_last start");
+        let result = self.iter.seek_to_last().map_err(Error::from);
+        info!("seek_to_last end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn seek(&mut self, key: &[u8]) -> Result<bool> {
         fail_point!("region_snapshot_seek", |_| {
             Err(box_err!("region seek error"))
         });
+        let start_time = Instant::now();
+        info!("seek start");
         self.should_seekable(key)?;
         let key = keys::data_key(key);
-        self.iter.seek(key.as_slice().into()).map_err(Error::from)
+        let result = self.iter.seek(key.as_slice().into()).map_err(Error::from);
+        info!("seek end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn seek_for_prev(&mut self, key: &[u8]) -> Result<bool> {
+        let start_time = Instant::now();
+        info!("seek_for_prev start");
         self.should_seekable(key)?;
         let key = keys::data_key(key);
-        self.iter
+        let result = self.iter
             .seek_for_prev(key.as_slice().into())
-            .map_err(Error::from)
+            .map_err(Error::from);
+        info!("seek_for_prev end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn prev(&mut self) -> Result<bool> {
-        self.iter.prev().map_err(Error::from)
+        let start_time = Instant::now();
+        info!("prev start");
+        let result = self.iter.prev().map_err(Error::from);
+        info!("prev end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     pub fn next(&mut self) -> Result<bool> {
-        self.iter.next().map_err(Error::from)
+        let start_time = Instant::now();
+        info!("next start");
+        let result = self.iter.next().map_err(Error::from);
+        info!("next end {}", start_time.elapsed().as_nanos());
+        result
     }
 
     #[inline]
@@ -381,14 +418,14 @@ pub fn new_temp_engine(path: &tempfile::TempDir) -> Engines<RocksEngine, RocksEn
             engine_traits::ALL_CFS,
             None,
         )
-        .unwrap(),
+            .unwrap(),
         engine_rocks::util::new_engine(
             raft_path.to_str().unwrap(),
             None,
             &[engine_traits::CF_DEFAULT],
             None,
         )
-        .unwrap(),
+            .unwrap(),
         shared_block_cache,
     )
 }
@@ -523,11 +560,11 @@ mod tests {
                                  lower_bound: Option<&[u8]>,
                                  upper_bound: Option<&[u8]>,
                                  seek_table: &Vec<(
-            &[u8],
-            bool,
-            Option<(&[u8], &[u8])>,
-            Option<(&[u8], &[u8])>,
-        )>| {
+                                     &[u8],
+                                     bool,
+                                     Option<(&[u8], &[u8])>,
+                                     Option<(&[u8], &[u8])>,
+                                 )>| {
             let iter_opt = IterOptions::new(
                 lower_bound.map(|v| KeyBuilder::from_slice(v, keys::DATA_PREFIX_KEY.len(), 0)),
                 upper_bound.map(|v| KeyBuilder::from_slice(v, keys::DATA_PREFIX_KEY.len(), 0)),
@@ -635,7 +672,7 @@ mod tests {
             data.push((key.to_vec(), value.to_vec()));
             Ok(true)
         })
-        .unwrap();
+            .unwrap();
 
         assert_eq!(data.len(), 2);
         assert_eq!(data, &base_data[1..3]);
@@ -645,7 +682,7 @@ mod tests {
             data.push((key.to_vec(), value.to_vec()));
             Ok(false)
         })
-        .unwrap();
+            .unwrap();
 
         assert_eq!(data.len(), 1);
 
@@ -670,7 +707,7 @@ mod tests {
             data.push((key.to_vec(), value.to_vec()));
             Ok(true)
         })
-        .unwrap();
+            .unwrap();
 
         assert_eq!(data.len(), 5);
         assert_eq!(data, base_data);
