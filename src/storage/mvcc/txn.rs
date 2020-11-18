@@ -2,13 +2,12 @@
 
 use crate::storage::kv::{Modify, ScanMode, Snapshot, Statistics, WriteData};
 use crate::storage::mvcc::{metrics::*, reader::MvccReader, ErrorInner, Result};
+use crate::storage::txn::get_old_value;
 use concurrency_manager::{ConcurrencyManager, KeyHandleGuard};
 use engine_traits::{CF_DEFAULT, CF_LOCK, CF_WRITE};
 use kvproto::kvrpcpb::{ExtraOp, IsolationLevel};
 use std::fmt;
-use txn_types::{
-    Key, Lock, LockType, MutationType, OldValue, TimeStamp, TxnExtra, Value, Write, WriteType,
-};
+use txn_types::{Key, Lock, LockType, MutationType, TimeStamp, TxnExtra, Value, Write, WriteType};
 
 pub const MAX_TXN_WRITE_SIZE: usize = 32 * 1024;
 
@@ -491,37 +490,10 @@ impl<S: Snapshot> MvccTxn<S> {
         mutation_type: MutationType,
         prev_write: Option<Write>,
     ) -> Result<()> {
-        use crate::storage::mvcc::reader::seek_for_valid_write;
-
         if self.extra_op == ExtraOp::ReadOldValue
             && (mutation_type == MutationType::Put || mutation_type == MutationType::Delete)
         {
-            let old_value = if let Some(w) = prev_write {
-                // If write is Rollback or Lock, seek for valid write record.
-                if w.write_type == WriteType::Rollback || w.write_type == WriteType::Lock {
-                    let write_cursor = self.reader.write_cursor.as_mut().unwrap();
-                    // Skip the current write record.
-                    write_cursor.next(&mut self.reader.statistics.write);
-                    let write = seek_for_valid_write(
-                        write_cursor,
-                        key,
-                        self.start_ts,
-                        &mut self.reader.statistics,
-                    )?;
-                    write.map(|w| OldValue {
-                        short_value: w.short_value,
-                        start_ts: w.start_ts,
-                    })
-                } else {
-                    Some(OldValue {
-                        short_value: w.short_value,
-                        start_ts: w.start_ts,
-                    })
-                }
-            } else {
-                None
-            };
-            // If write is None or cannot find a previously valid write record.
+            let old_value = get_old_value(self, key, prev_write)?;
             self.writes.extra.add_old_value(
                 key.clone().append_ts(self.start_ts),
                 old_value,
@@ -618,7 +590,7 @@ mod tests {
         TxnStatus,
     };
     use kvproto::kvrpcpb::Context;
-    use txn_types::{TimeStamp, SHORT_VALUE_MAX_LEN};
+    use txn_types::{OldValue, TimeStamp, SHORT_VALUE_MAX_LEN};
 
     fn test_mvcc_txn_read_imp(k1: &[u8], k2: &[u8], v: &[u8]) {
         let engine = TestEngineBuilder::new().build().unwrap();

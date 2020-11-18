@@ -10,7 +10,7 @@ mod actions;
 
 pub use actions::{
     acquire_pessimistic_lock::acquire_pessimistic_lock, cleanup::cleanup, commit::commit,
-    pessimistic_prewrite::pessimistic_prewrite, prewrite::prewrite,
+    get_old_value::get_old_value, pessimistic_prewrite::pessimistic_prewrite, prewrite::prewrite,
 };
 
 mod latch;
