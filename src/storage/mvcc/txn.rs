@@ -103,7 +103,7 @@ pub struct MvccTxn<S: Snapshot> {
     pub(crate) reader: MvccReader<S>,
     pub(crate) start_ts: TimeStamp,
     write_size: usize,
-    writes: WriteData,
+    pub(crate) writes: WriteData,
     // When 1PC is enabled, locks will be collected here instead of marshalled and put into `writes`,
     // so it can be further processed. The elements are tuples representing
     // (key, lock, remove_pessimistic_lock)
@@ -395,7 +395,7 @@ impl<S: Snapshot> MvccTxn<S> {
                     start_ts: self.start_ts,
                     key: key.clone().into_raw()?,
                 }
-                .into());
+                    .into());
             }
         }
         // Used pipelined pessimistic lock acquiring in this txn but failed
@@ -480,27 +480,6 @@ impl<S: Snapshot> MvccTxn<S> {
             deleted_versions,
             is_completed,
         })
-    }
-
-    // Check and execute the extra operation.
-    // Currently we use it only for reading the old value for CDC.
-    pub fn check_extra_op(
-        &mut self,
-        key: &Key,
-        mutation_type: MutationType,
-        prev_write: Option<Write>,
-    ) -> Result<()> {
-        if self.extra_op == ExtraOp::ReadOldValue
-            && (mutation_type == MutationType::Put || mutation_type == MutationType::Delete)
-        {
-            let old_value = get_old_value(self, key, prev_write)?;
-            self.writes.extra.add_old_value(
-                key.clone().append_ts(self.start_ts),
-                old_value,
-                mutation_type,
-            );
-        }
-        Ok(())
     }
 }
 
@@ -961,8 +940,8 @@ mod tests {
     }
 
     fn test_gc_imp<F>(k: &[u8], v1: &[u8], v2: &[u8], v3: &[u8], v4: &[u8], gc: F)
-    where
-        F: Fn(&RocksEngine, &[u8], u64),
+        where
+            F: Fn(&RocksEngine, &[u8], u64),
     {
         let engine = TestEngineBuilder::new().build().unwrap();
 
@@ -1122,7 +1101,7 @@ mod tests {
             TimeStamp::default(),
             false,
         )
-        .unwrap();
+            .unwrap();
         assert!(txn.write_size() > 0);
         engine
             .write(&ctx, WriteData::from_modifies(txn.into_modifies()))
@@ -1168,7 +1147,7 @@ mod tests {
             TimeStamp::default(),
             false,
         )
-        .is_err());
+            .is_err());
 
         let snapshot = engine.snapshot(Default::default()).unwrap();
         let mut txn = MvccTxn::new(snapshot, 5.into(), true, cm);
@@ -1184,7 +1163,7 @@ mod tests {
             TimeStamp::default(),
             false,
         )
-        .is_ok());
+            .is_ok());
     }
 
     #[test]
@@ -1646,7 +1625,7 @@ mod tests {
                     false,
                     TimeStamp::zero(),
                 )
-                .unwrap();
+                    .unwrap();
                 write(WriteData::from_modifies(txn.into_modifies()));
                 txn = new_txn(start_ts.into(), cm.clone());
                 txn.extra_op = ExtraOp::ReadOldValue;
@@ -1663,7 +1642,7 @@ mod tests {
                     TimeStamp::zero(),
                     false,
                 )
-                .unwrap();
+                    .unwrap();
             } else {
                 prewrite(
                     &mut txn,
@@ -1677,7 +1656,7 @@ mod tests {
                     TimeStamp::default(),
                     false,
                 )
-                .unwrap();
+                    .unwrap();
             }
             if check_old_value {
                 let extra = txn.take_extra();
@@ -1723,7 +1702,7 @@ mod tests {
                 TimeStamp::zero(),
                 false,
             )
-            .unwrap();
+                .unwrap();
             let modifies = txn.into_modifies();
             if !modifies.is_empty() {
                 engine
@@ -1777,7 +1756,7 @@ mod tests {
                 TimeStamp::zero(),
                 false,
             )
-            .unwrap();
+                .unwrap();
             let modifies = txn.into_modifies();
             if !modifies.is_empty() {
                 engine
@@ -1830,7 +1809,7 @@ mod tests {
             TimeStamp::zero(),
             false,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(min_commit_ts.into_inner(), 100);
     }
 

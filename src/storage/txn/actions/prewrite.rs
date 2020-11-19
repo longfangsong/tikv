@@ -6,7 +6,9 @@ use crate::storage::mvcc::{
 };
 use crate::storage::txn::actions::shared::prewrite_key_value;
 use crate::storage::Snapshot;
+use kvproto::kvrpcpb::ExtraOp;
 use txn_types::{Key, Mutation, TimeStamp, WriteType};
+use crate::storage::txn::get_old_value;
 
 pub fn prewrite<S: Snapshot>(
     txn: &mut MvccTxn<S>,
@@ -44,7 +46,7 @@ pub fn prewrite<S: Snapshot>(
                 key: key.into_raw()?,
                 pessimistic: true,
             }
-            .into());
+                .into());
         }
         // Allow to overwrite the primary lock to fallback from async commit.
         if lock.use_async_commit && secondary_keys.is_none() {
@@ -73,7 +75,7 @@ pub fn prewrite<S: Snapshot>(
                     key: key.into_raw()?,
                     primary: primary.to_vec(),
                 }
-                .into());
+                    .into());
             }
             // If there's a write record whose commit_ts equals to our start ts, the current
             // transaction is ok to continue, unless the record means that the current
@@ -90,7 +92,7 @@ pub fn prewrite<S: Snapshot>(
                     key: key.into_raw()?,
                     primary: primary.to_vec(),
                 }
-                .into());
+                    .into());
             }
             // Should check it when no lock exists, otherwise it can report error when there is
             // a lock belonging to a committed transaction which deletes the key.
@@ -102,8 +104,14 @@ pub fn prewrite<S: Snapshot>(
         return Ok(TimeStamp::zero());
     }
 
-    if !fallback_from_async_commit {
-        txn.check_extra_op(&key, mutation_type, prev_write)?;
+    if !fallback_from_async_commit
+        && (txn.extra_op == ExtraOp::ReadOldValue && mutation_type.has_old_value()) {
+        let old_value = get_old_value(txn, &key, prev_write)?;
+        txn.writes.extra.add_old_value(
+            key.clone().append_ts(txn.start_ts),
+            old_value,
+            mutation_type,
+        );
     }
     prewrite_key_value(
         txn,
@@ -207,7 +215,7 @@ pub mod tests {
             50.into(),
             false,
         )
-        .unwrap();
+            .unwrap();
 
         cm.update_max_ts(60.into());
         // calculated commit_ts = 61 > 50, ok
@@ -223,7 +231,7 @@ pub mod tests {
             50.into(),
             false,
         )
-        .unwrap_err();
+            .unwrap_err();
     }
 
     #[test]
@@ -247,7 +255,7 @@ pub mod tests {
             50.into(),
             true,
         )
-        .unwrap();
+            .unwrap();
 
         cm.update_max_ts(60.into());
         // calculated commit_ts = 61 > 50, ok
@@ -263,7 +271,7 @@ pub mod tests {
             50.into(),
             true,
         )
-        .unwrap_err();
+            .unwrap_err();
     }
 
     #[test]

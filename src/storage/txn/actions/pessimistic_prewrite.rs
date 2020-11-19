@@ -6,6 +6,8 @@ use crate::storage::mvcc::{
     Result as MvccResult, TimeStamp,
 };
 use crate::storage::Snapshot;
+use kvproto::kvrpcpb::ExtraOp;
+use crate::storage::txn::get_old_value;
 
 pub fn pessimistic_prewrite<S: Snapshot>(
     txn: &mut MvccTxn<S>,
@@ -49,7 +51,7 @@ pub fn pessimistic_prewrite<S: Snapshot>(
                     start_ts: txn.start_ts,
                     key: key.into_raw()?,
                 }
-                .into());
+                    .into());
             }
             return Err(txn
                 .handle_non_pessimistic_lock_conflict(key, lock)
@@ -80,7 +82,15 @@ pub fn pessimistic_prewrite<S: Snapshot>(
         false
     };
 
-    txn.check_extra_op(&key, mutation_type, None)?;
+    if txn.extra_op == ExtraOp::ReadOldValue && mutation_type.has_old_value() {
+        txn.check_extra_op(&key, mutation_type, None)?;
+        let old_value = get_old_value(txn, &key, prev_write)?;
+        txn.writes.extra.add_old_value(
+            key.clone().append_ts(txn.start_ts),
+            old_value,
+            mutation_type,
+        );
+    }
     // No need to check data constraint, it's resolved by pessimistic locks.
     prewrite_key_value(
         txn,
@@ -160,7 +170,7 @@ pub mod tests {
             50.into(),
             false,
         )
-        .unwrap();
+            .unwrap();
 
         cm.update_max_ts(60.into());
         // calculated commit_ts = 61 > 50, ok
@@ -177,7 +187,7 @@ pub mod tests {
             50.into(),
             false,
         )
-        .unwrap_err();
+            .unwrap_err();
     }
 
     #[test]
@@ -205,7 +215,7 @@ pub mod tests {
             50.into(),
             true,
         )
-        .unwrap();
+            .unwrap();
 
         cm.update_max_ts(60.into());
         // calculated commit_ts = 61 > 50, ok
@@ -222,7 +232,7 @@ pub mod tests {
             50.into(),
             true,
         )
-        .unwrap_err();
+            .unwrap_err();
     }
 
     #[test]
