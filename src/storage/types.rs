@@ -7,8 +7,12 @@ use crate::storage::{
     txn::ProcessResult,
     Callback, Result,
 };
+use bitflags::_core::pin::Pin;
+use bitflags::_core::task::Context;
 use kvproto::kvrpcpb;
 use std::fmt::Debug;
+use std::future::Future;
+use tokio::macros::support::Poll;
 use txn_types::{Key, Value};
 
 /// `MvccInfo` stores all mvcc information of given key.
@@ -159,6 +163,11 @@ macro_rules! storage_callback {
             $($variant(Callback<$cb_ty>),)*
         }
 
+        pub enum StorageCallbackParam {
+            $($variant($cb_ty),)*
+            Err(crate::storage::Error)
+        }
+
         impl StorageCallback {
             /// Delivers the process result of a command to the storage callback.
             pub fn execute(self, pr: ProcessResult) {
@@ -177,6 +186,27 @@ macro_rules! storage_callback {
                 StorageCallback::$variant(cb)
             }
         })*
+    }
+}
+
+impl From<ProcessResult> for StorageCallbackParam {
+    fn from(pr: ProcessResult) -> Self {
+        match pr {
+            ProcessResult::Res => StorageCallbackParam::Boolean(()),
+            ProcessResult::MultiRes { results } => StorageCallbackParam::Booleans(results),
+            ProcessResult::MvccInfoByKey { mvcc } => StorageCallbackParam::MvccInfoByKey(mvcc),
+            ProcessResult::MvccInfoByStartTs { mvcc } => {
+                StorageCallbackParam::MvccInfoByStartTs(mvcc)
+            }
+            ProcessResult::Locks { locks } => StorageCallbackParam::Locks(locks),
+            ProcessResult::TxnStatus { txn_status } => StorageCallbackParam::TxnStatus(txn_status),
+            ProcessResult::Prewrite { result } => StorageCallbackParam::PrewriteResult(result),
+            ProcessResult::PessimisticLock { res } => StorageCallbackParam::PessimisticLockRes(res),
+            ProcessResult::SecondaryLocksStatus { status } => {
+                StorageCallbackParam::SecondaryLocksStatus(status)
+            }
+            _ => panic!("process result mismatch"),
+        }
     }
 }
 

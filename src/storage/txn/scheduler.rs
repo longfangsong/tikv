@@ -48,10 +48,15 @@ use crate::storage::txn::{
     sched_pool::{tls_collect_read_duration, tls_collect_scan_details, SchedPool},
     Error, ProcessResult,
 };
+use crate::storage::types::StorageCallbackParam;
 use crate::storage::{
     get_priority_tag, types::StorageCallback, Error as StorageError,
     ErrorInner as StorageErrorInner,
 };
+use futures::TryFutureExt;
+use std::future::Future;
+use tokio::stream::StreamExt;
+use tokio::sync::oneshot;
 
 const TASKS_SLOTS_NUM: usize = 1 << 12; // 4096 slots.
 
@@ -91,7 +96,7 @@ struct TaskContext {
     task: Option<Task>,
 
     lock: Lock,
-    cb: Option<StorageCallback>,
+    tx: oneshot::Sender<StorageCallbackParam>,
     pr: Option<ProcessResult>,
     write_bytes: usize,
     tag: metrics::CommandKind,
@@ -103,7 +108,11 @@ struct TaskContext {
 }
 
 impl TaskContext {
-    fn new(task: Task, latches: &Latches, cb: StorageCallback) -> TaskContext {
+    fn new(
+        task: Task,
+        latches: &Latches,
+        tx: oneshot::Sender<StorageCallbackParam>,
+    ) -> TaskContext {
         let tag = task.cmd.tag();
         let lock = task.cmd.gen_lock(latches);
         // Write command should acquire write lock.
@@ -119,7 +128,7 @@ impl TaskContext {
         TaskContext {
             task: Some(task),
             lock,
-            cb: Some(cb),
+            tx,
             pr: None,
             write_bytes,
             tag,
@@ -186,8 +195,12 @@ impl<L: LockManager> SchedulerInner<L> {
         self.task_slots[id_index(cid)].lock()
     }
 
-    fn new_task_context(&self, task: Task, callback: StorageCallback) -> TaskContext {
-        let tctx = TaskContext::new(task, &self.latches, callback);
+    fn new_task_context(
+        &self,
+        task: Task,
+        tx: oneshot::Sender<StorageCallbackParam>,
+    ) -> TaskContext {
+        let tctx = TaskContext::new(task, &self.latches, tx);
         let running_write_bytes = self
             .running_write_bytes
             .fetch_add(tctx.write_bytes, Ordering::AcqRel) as i64;
@@ -252,7 +265,6 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
     pub(in crate::storage) fn new(
         engine: E,
         lock_mgr: L,
-
         concurrency_manager: ConcurrencyManager,
         concurrency: usize,
         worker_pool_size: usize,
@@ -291,16 +303,19 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         }
     }
 
-    pub(in crate::storage) fn run_cmd(&self, cmd: Command, callback: StorageCallback) {
+    pub(in crate::storage) fn run_cmd(
+        &self,
+        cmd: Command,
+    ) -> impl Future<Output = StorageCallbackParam> {
         // write flow control
         if cmd.need_flow_control() && self.inner.too_busy() {
             SCHED_TOO_BUSY_COUNTER_VEC.get(cmd.tag()).inc();
-            callback.execute(ProcessResult::Failed {
-                err: StorageError::from(StorageErrorInner::SchedTooBusy),
-            });
-            return;
+            futures::future::ok(StorageCallbackParam::Err(StorageError::from(
+                StorageErrorInner::SchedTooBusy,
+            )))
+        } else {
+            self.schedule_command(cmd)
         }
-        self.schedule_command(cmd, callback);
     }
 
     /// Releases all the latches held by a command.
@@ -311,7 +326,7 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         }
     }
 
-    fn schedule_command(&self, cmd: Command, callback: StorageCallback) {
+    fn schedule_command(&self, cmd: Command) -> impl Future<Output = StorageCallbackParam> {
         let cid = self.inner.gen_id();
         debug!("received new command"; "cid" => cid, "cmd" => ?cmd);
 
@@ -323,15 +338,17 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
             .inc();
 
         let mut task_slot = self.inner.get_task_slot(cid);
+        let (tx, rx) = oneshot::channel();
         let tctx = task_slot
             .entry(cid)
-            .or_insert_with(|| self.inner.new_task_context(Task::new(cid, cmd), callback));
+            .or_insert_with(|| self.inner.new_task_context(Task::new(cid, cmd), tx));
         if self.inner.latches.acquire(&mut tctx.lock, cid) {
             tctx.on_schedule();
             let task = tctx.task.take().unwrap();
             drop(task_slot);
-            self.execute(task);
+            self.execute(task)
         }
+        rx.into_future()
     }
 
     /// Tries to acquire all the necessary latches. If all the necessary latches are acquired,
@@ -448,9 +465,10 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         let tctx = self.inner.dequeue_task_context(cid);
         if let ProcessResult::NextCommand { cmd } = pr {
             SCHED_STAGE_COUNTER_VEC.get(tag).next_cmd.inc();
-            self.schedule_command(cmd, tctx.cb.unwrap());
+        // self.schedule_command(cmd, tctx.cb.unwrap());
         } else {
-            tctx.cb.unwrap().execute(pr);
+            tctx.tx.send(pr)
+            // tctx.cb.unwrap().execute(pr);
         }
 
         self.release_lock(&tctx.lock, cid);
@@ -490,22 +508,23 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         // If pipelined pessimistic lock or async apply prewrite takes effect, it's not guaranteed
         // that the proposed or committed callback is surely invoked, which takes and invokes
         // `tctx.cb(tctx.pr)`.
-        if let Some(cb) = tctx.cb {
-            let pr = match result {
-                Ok(()) => pr.or(tctx.pr).unwrap(),
-                Err(e) => ProcessResult::Failed {
-                    err: StorageError::from(e),
-                },
-            };
-            if let ProcessResult::NextCommand { cmd } = pr {
-                SCHED_STAGE_COUNTER_VEC.get(tag).next_cmd.inc();
-                self.schedule_command(cmd, cb);
-            } else {
-                cb.execute(pr);
-            }
-        } else {
-            assert!(pipelined || async_apply_prewrite);
-        }
+        // if let Some(cb) = tctx.cb {
+        let pr = match result {
+            Ok(()) => pr.or(tctx.pr).unwrap(),
+            Err(e) => ProcessResult::Failed {
+                err: StorageError::from(e),
+            },
+        };
+        // if let ProcessResult::NextCommand { cmd } = pr {
+        //     SCHED_STAGE_COUNTER_VEC.get(tag).next_cmd.inc();
+        //     self.schedule_command(cmd);
+        // } else {
+        //     cb.execute(pr);
+        tctx.tx.send(pr.into());
+        // }
+        // } else {
+        //     assert!(pipelined || async_apply_prewrite);
+        // }
 
         self.release_lock(&tctx.lock, cid);
     }

@@ -60,6 +60,7 @@ pub use self::{
 
 use crate::read_pool::{ReadPool, ReadPoolHandle};
 use crate::storage::metrics::CommandKind;
+use crate::storage::types::StorageCallbackParam;
 use crate::storage::{
     config::Config,
     kv::{with_tls_engine, Modify, WriteData},
@@ -167,15 +168,13 @@ impl<E: Engine, L: LockManager> Drop for Storage<E, L> {
 }
 
 macro_rules! check_key_size {
-    ($key_iter: expr, $max_key_size: expr, $callback: ident) => {
+    ($key_iter: expr, $max_key_size: expr) => {
         for k in $key_iter {
             let key_size = k.len();
             if key_size > $max_key_size {
-                $callback(Err(Error::from(ErrorInner::KeyTooLarge(
-                    key_size,
-                    $max_key_size,
-                ))));
-                return Ok(());
+                return futures::future::ok(StorageCallbackParam::Err(Error::from(
+                    ErrorInner::KeyTooLarge(key_size, $max_key_size),
+                )));
             }
         }
     };
@@ -686,47 +685,33 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         }
     }
 
-    pub fn sched_txn_command<T: StorageCallbackType>(
-        &self,
-        cmd: TypedCommand<T>,
-        callback: Callback<T>,
-    ) -> Result<()> {
+    pub fn sched_txn_command(&self, cmd: Command) -> impl Future<Output = StorageCallbackParam> {
         use crate::storage::txn::commands::{
             AcquirePessimisticLock, Prewrite, PrewritePessimistic,
         };
-
-        let cmd: Command = cmd.into();
 
         match &cmd {
             Command::Prewrite(Prewrite { mutations, .. }) => {
                 check_key_size!(
                     mutations.iter().map(|m| m.key().as_encoded()),
-                    self.max_key_size,
-                    callback
+                    self.max_key_size
                 );
             }
             Command::PrewritePessimistic(PrewritePessimistic { mutations, .. }) => {
                 check_key_size!(
                     mutations.iter().map(|(m, _)| m.key().as_encoded()),
-                    self.max_key_size,
-                    callback
+                    self.max_key_size
                 );
             }
             Command::AcquirePessimisticLock(AcquirePessimisticLock { keys, .. }) => {
-                check_key_size!(
-                    keys.iter().map(|k| k.0.as_encoded()),
-                    self.max_key_size,
-                    callback
-                );
+                check_key_size!(keys.iter().map(|k| k.0.as_encoded()), self.max_key_size);
             }
             _ => {}
         }
 
         fail_point!("storage_drop_message", |_| Ok(()));
         cmd.incr_cmd_metric();
-        self.sched.run_cmd(cmd, T::callback(callback));
-
-        Ok(())
+        self.sched.run_cmd(cmd)
     }
 
     /// Delete all keys in the range [`start_key`, `end_key`).
@@ -995,7 +980,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         value: Vec<u8>,
         callback: Callback<()>,
     ) -> Result<()> {
-        check_key_size!(Some(&key).into_iter(), self.max_key_size, callback);
+        check_key_size!(Some(&key).into_iter(), self.max_key_size);
 
         self.engine.async_write(
             &ctx,
@@ -1020,11 +1005,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
     ) -> Result<()> {
         let cf = Self::rawkv_cf(&cf)?;
 
-        check_key_size!(
-            pairs.iter().map(|(ref k, _)| k),
-            self.max_key_size,
-            callback
-        );
+        check_key_size!(pairs.iter().map(|(ref k, _)| k), self.max_key_size);
 
         let modifies = pairs
             .into_iter()
@@ -1047,7 +1028,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         key: Vec<u8>,
         callback: Callback<()>,
     ) -> Result<()> {
-        check_key_size!(Some(&key).into_iter(), self.max_key_size, callback);
+        check_key_size!(Some(&key).into_iter(), self.max_key_size);
 
         self.engine.async_write(
             &ctx,
@@ -1074,8 +1055,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
             Some(&start_key)
                 .into_iter()
                 .chain(Some(&end_key).into_iter()),
-            self.max_key_size,
-            callback
+            self.max_key_size
         );
 
         let cf = Self::rawkv_cf(&cf)?;
@@ -1100,7 +1080,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         callback: Callback<()>,
     ) -> Result<()> {
         let cf = Self::rawkv_cf(&cf)?;
-        check_key_size!(keys.iter(), self.max_key_size, callback);
+        check_key_size!(keys.iter(), self.max_key_size);
 
         let modifies = keys
             .into_iter()
@@ -3643,7 +3623,7 @@ mod tests {
             (b"c".to_vec(), b"c3".to_vec()),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false),
             true
         );
 
@@ -3653,7 +3633,7 @@ mod tests {
             (b"c".to_vec(), vec![]),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false),
             true
         );
 
@@ -3663,7 +3643,7 @@ mod tests {
             (b"c3".to_vec(), b"c".to_vec()),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false),
             false
         );
 
@@ -3674,7 +3654,7 @@ mod tests {
             (b"a".to_vec(), vec![]),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, false),
             false
         );
 
@@ -3684,7 +3664,7 @@ mod tests {
             (b"c3".to_vec(), b"c".to_vec()),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true),
             true
         );
 
@@ -3694,7 +3674,7 @@ mod tests {
             (b"a3".to_vec(), vec![]),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true),
             true
         );
 
@@ -3704,7 +3684,7 @@ mod tests {
             (b"c".to_vec(), b"c3".to_vec()),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true),
             false
         );
 
@@ -3714,7 +3694,7 @@ mod tests {
             (b"c3".to_vec(), vec![]),
         ]);
         assert_eq!(
-            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true,),
+            <Storage<RocksEngine, DummyLockManager>>::check_key_ranges(&ranges, true),
             false
         );
     }
