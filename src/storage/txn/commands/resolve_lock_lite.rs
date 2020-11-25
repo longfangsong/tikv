@@ -4,7 +4,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::MvccTxn;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::{cleanup, commit, Result};
@@ -14,7 +14,6 @@ use txn_types::{Key, TimeStamp};
 command! {
     /// Resolve locks on `resolve_keys` according to `start_ts` and `commit_ts`.
     ResolveLockLite:
-        cmd_ty => (),
         display => "kv::resolve_lock_lite", (),
         content => {
             /// The transaction timestamp.

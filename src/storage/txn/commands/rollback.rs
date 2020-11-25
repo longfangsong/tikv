@@ -4,7 +4,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::MvccTxn;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::{cleanup, Result};
@@ -16,7 +16,6 @@ command! {
     ///
     /// This should be following a [`Prewrite`](Command::Prewrite) on the given key.
     Rollback:
-        cmd_ty => (),
         display => "kv::command::rollback keys({}) @ {} | {:?}", (keys.len, start_ts, ctx),
         content => {
             keys: Vec<Key>,

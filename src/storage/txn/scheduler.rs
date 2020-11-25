@@ -48,9 +48,9 @@ use crate::storage::txn::{
     sched_pool::{tls_collect_read_duration, tls_collect_scan_details, SchedPool},
     Error, ProcessResult,
 };
-use crate::storage::types::StorageCallbackParam;
+use crate::storage::types::ProcessResult;
 use crate::storage::{
-    get_priority_tag, types::StorageCallback, Error as StorageError,
+    get_priority_tag, Error as StorageError,
     ErrorInner as StorageErrorInner,
 };
 use futures::TryFutureExt;
@@ -96,7 +96,7 @@ struct TaskContext {
     task: Option<Task>,
 
     lock: Lock,
-    tx: oneshot::Sender<StorageCallbackParam>,
+    tx: oneshot::Sender<ProcessResult>,
     pr: Option<ProcessResult>,
     write_bytes: usize,
     tag: metrics::CommandKind,
@@ -111,7 +111,7 @@ impl TaskContext {
     fn new(
         task: Task,
         latches: &Latches,
-        tx: oneshot::Sender<StorageCallbackParam>,
+        tx: oneshot::Sender<ProcessResult>,
     ) -> TaskContext {
         let tag = task.cmd.tag();
         let lock = task.cmd.gen_lock(latches);
@@ -198,7 +198,7 @@ impl<L: LockManager> SchedulerInner<L> {
     fn new_task_context(
         &self,
         task: Task,
-        tx: oneshot::Sender<StorageCallbackParam>,
+        tx: oneshot::Sender<ProcessResult>,
     ) -> TaskContext {
         let tctx = TaskContext::new(task, &self.latches, tx);
         let running_write_bytes = self
@@ -306,13 +306,13 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
     pub(in crate::storage) fn run_cmd(
         &self,
         cmd: Command,
-    ) -> impl Future<Output = StorageCallbackParam> {
+    ) -> impl Future<Output=ProcessResult> {
         // write flow control
         if cmd.need_flow_control() && self.inner.too_busy() {
             SCHED_TOO_BUSY_COUNTER_VEC.get(cmd.tag()).inc();
-            futures::future::ok(StorageCallbackParam::Err(StorageError::from(
-                StorageErrorInner::SchedTooBusy,
-            )))
+            futures::future::ok(ProcessResult::Failed {
+                err: StorageError::from(StorageErrorInner::SchedTooBusy)
+            })
         } else {
             self.schedule_command(cmd)
         }
@@ -326,7 +326,7 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         }
     }
 
-    fn schedule_command(&self, cmd: Command) -> impl Future<Output = StorageCallbackParam> {
+    fn schedule_command(&self, cmd: Command) -> impl Future<Output=ProcessResult> {
         let cid = self.inner.gen_id();
         debug!("received new command"; "cid" => cid, "cmd" => ?cmd);
 
@@ -465,7 +465,7 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
         let tctx = self.inner.dequeue_task_context(cid);
         if let ProcessResult::NextCommand { cmd } = pr {
             SCHED_STAGE_COUNTER_VEC.get(tag).next_cmd.inc();
-        // self.schedule_command(cmd, tctx.cb.unwrap());
+            // self.schedule_command(cmd, tctx.cb.unwrap());
         } else {
             tctx.tx.send(pr)
             // tctx.cb.unwrap().execute(pr);
@@ -650,14 +650,14 @@ impl<E: Engine, L: LockManager> Scheduler<E, L> {
             // Initiates an async write operation on the storage engine, there'll be a `WriteFinished`
             // message when it finishes.
             Ok(WriteResult {
-                ctx,
-                to_be_write,
-                rows,
-                pr,
-                lock_info,
-                lock_guards,
-                response_policy,
-            }) => {
+                   ctx,
+                   to_be_write,
+                   rows,
+                   pr,
+                   lock_info,
+                   lock_guards,
+                   response_policy,
+               }) => {
                 SCHED_STAGE_COUNTER_VEC.get(tag).write.inc();
 
                 if let Some((lock, is_first_lock, wait_timeout)) = lock_info {
@@ -816,7 +816,7 @@ mod tests {
                 b"k".to_vec(),
                 10.into(),
             )
-            .into(),
+                .into(),
             commands::AcquirePessimisticLock::new(
                 vec![(Key::from_raw(b"k"), false)],
                 b"k".to_vec(),
@@ -829,21 +829,21 @@ mod tests {
                 TimeStamp::default(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Commit::new(
                 vec![Key::from_raw(b"k")],
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Cleanup::new(
                 Key::from_raw(b"k"),
                 10.into(),
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::Rollback::new(vec![Key::from_raw(b"k")], 10.into(), Context::default())
                 .into(),
             commands::PessimisticRollback::new(
@@ -852,7 +852,7 @@ mod tests {
                 20.into(),
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::ResolveLock::new(
                 temp_map,
                 None,
@@ -871,14 +871,14 @@ mod tests {
                 )],
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::ResolveLockLite::new(
                 10.into(),
                 TimeStamp::zero(),
                 vec![Key::from_raw(b"k")],
                 Context::default(),
             )
-            .into(),
+                .into(),
             commands::TxnHeartBeat::new(Key::from_raw(b"k"), 10.into(), 100, Context::default())
                 .into(),
         ];

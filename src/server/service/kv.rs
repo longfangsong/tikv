@@ -1596,14 +1596,9 @@ macro_rules! txn_command_future {
             $req: $req_ty,
         ) -> impl Future<Output = ServerResult<$resp_ty>> {
             $prelude
-            let (cb, f) = paired_future_callback();
-            let res = storage.sched_txn_command($req.into(), cb);
 
             async move {
-                let $v = match res {
-                    Err(e) => Err(e),
-                    Ok(_) => f.await?,
-                };
+                let $v = storage.sched_txn_command($req.into()).await;
                 let mut $resp = $resp_ty::default();
                 if let Some(err) = extract_region_error(&$v) {
                     $resp.set_region_error(err);

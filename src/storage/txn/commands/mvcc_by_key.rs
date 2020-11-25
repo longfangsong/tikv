@@ -2,7 +2,7 @@
 
 use crate::storage::mvcc::MvccReader;
 use crate::storage::txn::commands::{
-    find_mvcc_infos_by_key, Command, CommandExt, ReadCommand, TypedCommand,
+    find_mvcc_infos_by_key, Command, CommandExt, ReadCommand,
 };
 use crate::storage::txn::{ProcessResult, Result};
 use crate::storage::types::MvccInfo;
@@ -12,7 +12,6 @@ use txn_types::{Key, TimeStamp};
 command! {
     /// Retrieve MVCC information for the given key.
     MvccByKey:
-        cmd_ty => MvccInfo,
         display => "kv::command::mvccbykey {:?} | {:?}", (key, ctx),
         content => {
             key: Key,

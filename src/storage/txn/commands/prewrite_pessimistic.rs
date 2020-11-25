@@ -8,7 +8,7 @@ use crate::storage::mvcc::MvccTxn;
 use crate::storage::mvcc::{Error as MvccError, ErrorInner as MvccErrorInner};
 use crate::storage::txn::actions::shared::handle_1pc;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ResponsePolicy, TypedCommand, WriteCommand, WriteContext, WriteResult,
+    Command, CommandExt, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::{pessimistic_prewrite, Error, ErrorInner, Result};
 use crate::storage::types::PrewriteResult;
@@ -20,7 +20,6 @@ command! {
     /// This prepares the system to commit the transaction. Later a [`Commit`](Command::Commit)
     /// or a [`Rollback`](Command::Rollback) should follow.
     PrewritePessimistic:
-        cmd_ty => PrewriteResult,
         display => "kv::command::prewrite_pessimistic mutations({}) @ {} | {:?}", (mutations.len, start_ts, ctx),
         content => {
             /// The set of mutations to apply; the bool = is pessimistic lock.

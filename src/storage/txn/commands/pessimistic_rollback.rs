@@ -4,7 +4,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::{MvccTxn, Result as MvccResult};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::Result;
@@ -17,7 +17,6 @@ command! {
     ///
     /// This can roll back an [`AcquirePessimisticLock`](Command::AcquirePessimisticLock) command.
     PessimisticRollback:
-        cmd_ty => Vec<StorageResult<()>>,
         display => "kv::command::pessimistic_rollback keys({}) @ {} {} | {:?}", (keys.len, start_ts, for_update_ts, ctx),
         content => {
             /// The keys to be rolled back.

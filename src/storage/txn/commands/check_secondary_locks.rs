@@ -6,7 +6,7 @@ use crate::storage::mvcc::{
     txn::make_rollback, LockType, MvccTxn, SecondaryLockStatus, TimeStamp, TxnCommitRecord,
 };
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::Result;
@@ -23,7 +23,6 @@ command! {
     /// If the lock does not exist or is a pessimistic lock, to prevent the
     /// status being changed, a rollback may be written.
     CheckSecondaryLocks:
-        cmd_ty => SecondaryLocksStatus,
         display => "kv::command::CheckSecondaryLocks {} keys@{} | {:?}", (keys.len, start_ts, ctx),
         content => {
             /// The keys of secondary locks.

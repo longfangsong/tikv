@@ -6,7 +6,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::MvccTxn;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::{commit, Error, ErrorInner, Result};
@@ -17,7 +17,6 @@ command! {
     ///
     /// This should be following a [`Prewrite`](Command::Prewrite).
     Commit:
-        cmd_ty => TxnStatus,
         display => "kv::command::commit {} {} -> {} | {:?}", (keys.len, lock_ts, commit_ts, ctx),
         content => {
             /// The keys affected.

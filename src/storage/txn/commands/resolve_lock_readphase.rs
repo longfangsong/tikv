@@ -1,7 +1,7 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 use crate::storage::mvcc::MvccReader;
-use crate::storage::txn::commands::{Command, CommandExt, ReadCommand, ResolveLock, TypedCommand};
+use crate::storage::txn::commands::{Command, CommandExt, ReadCommand, ResolveLock};
 use crate::storage::txn::sched_pool::tls_collect_keyread_histogram_vec;
 use crate::storage::txn::{ProcessResult, Result, RESOLVE_LOCK_BATCH_SIZE};
 use crate::storage::{ScanMode, Snapshot, Statistics};
@@ -15,7 +15,6 @@ command! {
     /// before safe point.
     /// This should followed by a `ResolveLock`.
     ResolveLockReadPhase:
-        cmd_ty => (),
         display => "kv::resolve_lock_readphase", (),
         content => {
             /// Maps lock_ts to commit_ts. See ./resolve_lock.rs for details.

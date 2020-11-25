@@ -1,6 +1,6 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-use crate::storage::{txn::ProcessResult, types::StorageCallback};
+use crate::storage::txn::ProcessResult;
 use std::time::Duration;
 use txn_types::TimeStamp;
 
@@ -94,8 +94,7 @@ impl LockManager for DummyLockManager {
         _lock: Lock,
         _is_first_lock: bool,
         _wait_timeout: Option<WaitTimeout>,
-    ) {
-    }
+    ) {}
 
     fn wake_up(
         &self,
@@ -103,6 +102,5 @@ impl LockManager for DummyLockManager {
         _hashes: Vec<u64>,
         _commit_ts: TimeStamp,
         _is_pessimistic_txn: bool,
-    ) {
-    }
+    ) {}
 }

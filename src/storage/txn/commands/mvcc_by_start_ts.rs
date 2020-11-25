@@ -2,7 +2,7 @@
 
 use crate::storage::mvcc::MvccReader;
 use crate::storage::txn::commands::{
-    find_mvcc_infos_by_key, Command, CommandExt, ReadCommand, TypedCommand,
+    find_mvcc_infos_by_key, Command, CommandExt, ReadCommand,
 };
 use crate::storage::txn::{ProcessResult, Result};
 use crate::storage::types::MvccInfo;
@@ -12,7 +12,6 @@ use txn_types::{Key, TimeStamp};
 command! {
     /// Retrieve MVCC info for the first committed key which `start_ts == ts`.
     MvccByStartTs:
-        cmd_ty => Option<(Key, MvccInfo)>,
         display => "kv::command::mvccbystartts {:?} | {:?}", (start_ts, ctx),
         content => {
             start_ts: TimeStamp,

@@ -57,7 +57,7 @@ use crate::storage::mvcc::{Lock as MvccLock, MvccReader, ReleasedLock};
 use crate::storage::txn::latch::{self, Latches};
 use crate::storage::txn::{ProcessResult, Result};
 use crate::storage::types::{
-    MvccInfo, PessimisticLockRes, PrewriteResult, SecondaryLocksStatus, StorageCallbackType,
+    MvccInfo, PessimisticLockRes, PrewriteResult, SecondaryLocksStatus,
     TxnStatus,
 };
 use crate::storage::{metrics, Result as StorageResult, Snapshot, Statistics};
@@ -92,27 +92,7 @@ pub enum Command {
     MvccByStartTs(MvccByStartTs),
 }
 
-pub struct TypedCommand<T> {
-    pub cmd: Command,
-    _pd: PhantomData<T>,
-}
-
-impl<T: StorageCallbackType> From<Command> for TypedCommand<T> {
-    fn from(cmd: Command) -> TypedCommand<T> {
-        TypedCommand {
-            cmd,
-            _pd: PhantomData,
-        }
-    }
-}
-
-impl<T> From<TypedCommand<T>> for Command {
-    fn from(t: TypedCommand<T>) -> Command {
-        t.cmd
-    }
-}
-
-impl From<PrewriteRequest> for TypedCommand<PrewriteResult> {
+impl From<PrewriteRequest> for Command {
     fn from(mut req: PrewriteRequest) -> Self {
         let for_update_ts = req.get_for_update_ts();
         let secondary_keys = if req.get_use_async_commit() {
@@ -159,7 +139,7 @@ impl From<PrewriteRequest> for TypedCommand<PrewriteResult> {
     }
 }
 
-impl From<PessimisticLockRequest> for TypedCommand<StorageResult<PessimisticLockRes>> {
+impl From<PessimisticLockRequest> for Command {
     fn from(mut req: PessimisticLockRequest) -> Self {
         let keys = req
             .take_mutations()
@@ -188,7 +168,7 @@ impl From<PessimisticLockRequest> for TypedCommand<StorageResult<PessimisticLock
     }
 }
 
-impl From<CommitRequest> for TypedCommand<TxnStatus> {
+impl From<CommitRequest> for Command {
     fn from(mut req: CommitRequest) -> Self {
         let keys = req.get_keys().iter().map(|x| Key::from_raw(x)).collect();
 
@@ -201,7 +181,7 @@ impl From<CommitRequest> for TypedCommand<TxnStatus> {
     }
 }
 
-impl From<CleanupRequest> for TypedCommand<()> {
+impl From<CleanupRequest> for Command {
     fn from(mut req: CleanupRequest) -> Self {
         Cleanup::new(
             Key::from_raw(req.get_key()),
@@ -212,14 +192,14 @@ impl From<CleanupRequest> for TypedCommand<()> {
     }
 }
 
-impl From<BatchRollbackRequest> for TypedCommand<()> {
+impl From<BatchRollbackRequest> for Command {
     fn from(mut req: BatchRollbackRequest) -> Self {
         let keys = req.get_keys().iter().map(|x| Key::from_raw(x)).collect();
         Rollback::new(keys, req.get_start_version().into(), req.take_context())
     }
 }
 
-impl From<PessimisticRollbackRequest> for TypedCommand<Vec<StorageResult<()>>> {
+impl From<PessimisticRollbackRequest> for Command {
     fn from(mut req: PessimisticRollbackRequest) -> Self {
         let keys = req.get_keys().iter().map(|x| Key::from_raw(x)).collect();
 
@@ -232,7 +212,7 @@ impl From<PessimisticRollbackRequest> for TypedCommand<Vec<StorageResult<()>>> {
     }
 }
 
-impl From<TxnHeartBeatRequest> for TypedCommand<TxnStatus> {
+impl From<TxnHeartBeatRequest> for Command {
     fn from(mut req: TxnHeartBeatRequest) -> Self {
         TxnHeartBeat::new(
             Key::from_raw(req.get_primary_lock()),
@@ -243,7 +223,7 @@ impl From<TxnHeartBeatRequest> for TypedCommand<TxnStatus> {
     }
 }
 
-impl From<CheckTxnStatusRequest> for TypedCommand<TxnStatus> {
+impl From<CheckTxnStatusRequest> for Command {
     fn from(mut req: CheckTxnStatusRequest) -> Self {
         CheckTxnStatus::new(
             Key::from_raw(req.get_primary_key()),
@@ -256,7 +236,7 @@ impl From<CheckTxnStatusRequest> for TypedCommand<TxnStatus> {
     }
 }
 
-impl From<CheckSecondaryLocksRequest> for TypedCommand<SecondaryLocksStatus> {
+impl From<CheckSecondaryLocksRequest> for Command {
     fn from(mut req: CheckSecondaryLocksRequest) -> Self {
         CheckSecondaryLocks::new(
             req.take_keys()
@@ -269,7 +249,7 @@ impl From<CheckSecondaryLocksRequest> for TypedCommand<SecondaryLocksStatus> {
     }
 }
 
-impl From<ScanLockRequest> for TypedCommand<Vec<LockInfo>> {
+impl From<ScanLockRequest> for Command {
     fn from(mut req: ScanLockRequest) -> Self {
         let start_key = if req.get_start_key().is_empty() {
             None
@@ -286,7 +266,7 @@ impl From<ScanLockRequest> for TypedCommand<Vec<LockInfo>> {
     }
 }
 
-impl From<ResolveLockRequest> for TypedCommand<()> {
+impl From<ResolveLockRequest> for Command {
     fn from(mut req: ResolveLockRequest) -> Self {
         let resolve_keys: Vec<Key> = req
             .get_keys()
@@ -317,13 +297,13 @@ impl From<ResolveLockRequest> for TypedCommand<()> {
     }
 }
 
-impl From<MvccGetByKeyRequest> for TypedCommand<MvccInfo> {
+impl From<MvccGetByKeyRequest> for Command {
     fn from(mut req: MvccGetByKeyRequest) -> Self {
         MvccByKey::new(Key::from_raw(req.get_key()), req.take_context())
     }
 }
 
-impl From<MvccGetByStartTsRequest> for TypedCommand<Option<(Key, MvccInfo)>> {
+impl From<MvccGetByStartTsRequest> for Command {
     fn from(mut req: MvccGetByStartTsRequest) -> Self {
         MvccByStartTs::new(req.get_start_ts().into(), req.take_context())
     }

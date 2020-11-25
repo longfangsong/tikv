@@ -4,7 +4,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::{Error as MvccError, ErrorInner as MvccErrorInner, MvccTxn};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ResponsePolicy, TypedCommand, WriteCommand, WriteContext, WriteResult,
+    Command, CommandExt, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::Result;
 use crate::storage::{ProcessResult, Snapshot, TxnStatus};
@@ -17,7 +17,6 @@ command! {
     /// [`AcquirePessimisticLock`](Command::AcquirePessimisticLock) or
     /// [`Prewrite`](Command::Prewrite).
     TxnHeartBeat:
-        cmd_ty => TxnStatus,
         display => "kv::command::txn_heart_beat {} @ {} ttl {} | {:?}", (primary_key, start_ts, advise_ttl, ctx),
         content => {
             /// The primary key of the transaction.

@@ -7,7 +7,7 @@ use crate::storage::lock_manager::{Lock, WaitTimeout};
 use crate::storage::mvcc::{Error as MvccError, ErrorInner as MvccErrorInner, TimeStamp};
 use crate::storage::txn::{Error as TxnError, ErrorInner as TxnErrorInner};
 use crate::storage::{
-    Error as StorageError, ErrorInner as StorageErrorInner, ProcessResult, StorageCallback,
+    Error as StorageError, ErrorInner as StorageErrorInner, ProcessResult,
 };
 use tikv_util::collections::HashMap;
 use tikv_util::worker::{FutureRunnable, FutureScheduler, Stopped};
@@ -99,7 +99,6 @@ pub enum Task {
     WaitFor {
         // which txn waits for the lock
         start_ts: TimeStamp,
-        cb: StorageCallback,
         pr: ProcessResult,
         lock: Lock,
         timeout: WaitTimeout,
@@ -163,7 +162,6 @@ impl Display for Task {
 /// or the corresponding waiter times out.
 pub(crate) struct Waiter {
     pub(crate) start_ts: TimeStamp,
-    pub(crate) cb: StorageCallback,
     /// The result of `Command::AcquirePessimisticLock`.
     ///
     /// It contains a `KeyIsLocked` error at the beginning. It will be changed
@@ -178,14 +176,12 @@ pub(crate) struct Waiter {
 impl Waiter {
     fn new(
         start_ts: TimeStamp,
-        cb: StorageCallback,
         pr: ProcessResult,
         lock: Lock,
         deadline: Instant,
     ) -> Self {
         Self {
             start_ts,
-            cb,
             pr,
             lock,
             delay: Delay::new(deadline),
@@ -397,14 +393,12 @@ impl Scheduler {
     pub fn wait_for(
         &self,
         start_ts: TimeStamp,
-        cb: StorageCallback,
         pr: ProcessResult,
         lock: Lock,
         timeout: WaitTimeout,
     ) {
         self.notify_scheduler(Task::WaitFor {
             start_ts,
-            cb,
             pr,
             lock,
             timeout,

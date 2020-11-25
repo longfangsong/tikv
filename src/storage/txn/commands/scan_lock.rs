@@ -1,7 +1,7 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
 use crate::storage::mvcc::MvccReader;
-use crate::storage::txn::commands::{Command, CommandExt, ReadCommand, TypedCommand};
+use crate::storage::txn::commands::{Command, CommandExt, ReadCommand};
 use crate::storage::txn::sched_pool::tls_collect_keyread_histogram_vec;
 use crate::storage::txn::{LockInfo, ProcessResult, Result};
 use crate::storage::{ScanMode, Snapshot, Statistics};
@@ -10,7 +10,6 @@ use txn_types::{Key, TimeStamp};
 command! {
     /// Scan locks from `start_key`, and find all locks whose timestamp is before `max_ts`.
     ScanLock:
-        cmd_ty => Vec<LockInfo>,
         display => "kv::scan_lock {:?} {} @ {} | {:?}", (start_key, limit, max_ts, ctx),
         content => {
             /// The maximum transaction timestamp to scan.

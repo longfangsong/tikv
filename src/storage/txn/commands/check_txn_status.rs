@@ -8,7 +8,7 @@ use crate::storage::mvcc::txn::MissingLockAction;
 use crate::storage::mvcc::MvccTxn;
 use crate::storage::txn::actions::check_txn_status::*;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext,
     WriteResult,
 };
 use crate::storage::txn::Result;
@@ -25,7 +25,6 @@ command! {
     /// [`AcquirePessimisticLock`](Command::AcquirePessimisticLock) or
     /// [`Prewrite`](Command::Prewrite).
     CheckTxnStatus:
-        cmd_ty => TxnStatus,
         display => "kv::command::check_txn_status {} @ {} curr({}, {}) | {:?}", (primary_key, lock_ts, caller_start_ts, current_ts, ctx),
         content => {
             /// The primary key of the transaction.

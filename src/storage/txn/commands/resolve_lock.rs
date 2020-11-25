@@ -4,7 +4,7 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::{MvccTxn, MAX_TXN_WRITE_SIZE};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResolveLockReadPhase, ResponsePolicy, TypedCommand,
+    Command, CommandExt, ReleasedLocks, ResolveLockReadPhase, ResponsePolicy,
     WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::{cleanup, commit, Error, ErrorInner, Result};
@@ -19,7 +19,6 @@ command! {
     /// before safe point.
     /// This should follow after a `ResolveLockReadPhase`.
     ResolveLock:
-        cmd_ty => (),
         display => "kv::resolve_lock", (),
         content => {
             /// Maps lock_ts to commit_ts. If a transaction was rolled back, it is mapped to 0.

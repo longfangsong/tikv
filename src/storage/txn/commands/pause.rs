@@ -3,7 +3,7 @@
 use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ResponsePolicy, TypedCommand, WriteCommand, WriteContext, WriteResult,
+    Command, CommandExt, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::Result;
 use crate::storage::{ProcessResult, Snapshot};
@@ -16,7 +16,6 @@ command! {
     ///
     /// This means other write operations that involve these keys will be blocked.
     Pause:
-        cmd_ty => (),
         display => "kv::command::pause keys:({}) {} ms | {:?}", (keys.len, duration, ctx),
         content => {
             /// The keys to hold latches on.

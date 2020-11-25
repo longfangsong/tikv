@@ -13,7 +13,7 @@ use crate::storage::txn::actions::shared::handle_1pc;
 use crate::storage::txn::commands::{ResponsePolicy, WriteCommand, WriteContext, WriteResult};
 use crate::storage::txn::{Error, ErrorInner, Result};
 use crate::storage::{
-    txn::commands::{Command, CommandExt, TypedCommand},
+    txn::commands::{Command, CommandExt},
     types::PrewriteResult,
     Context, Error as StorageError, ProcessResult, Snapshot,
 };
@@ -26,7 +26,6 @@ command! {
     /// This prepares the system to commit the transaction. Later a [`Commit`](Command::Commit)
     /// or a [`Rollback`](Command::Rollback) should follow.
     Prewrite:
-        cmd_ty => PrewriteResult,
         display => "kv::command::prewrite mutations({}) @ {} | {:?}", (mutations.len, start_ts, ctx),
         content => {
             /// The set of mutations to apply.
@@ -148,7 +147,7 @@ impl Prewrite {
         primary: Vec<u8>,
         start_ts: TimeStamp,
         ctx: Context,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Prewrite {
         Prewrite::new(
             mutations,
             primary,
@@ -198,7 +197,7 @@ impl<S: Snapshot, L: LockManager> WriteCommand<S, L> for Prewrite {
                 region_id: self.get_ctx().get_region_id(),
                 start_ts: self.start_ts,
             }
-            .into());
+                .into());
         }
 
         let mut txn = MvccTxn::new(
@@ -353,7 +352,7 @@ mod tests {
             99,
             None,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(1, statistic.write.seek);
         let e = prewrite(
             &engine,
@@ -363,8 +362,8 @@ mod tests {
             100,
             None,
         )
-        .err()
-        .unwrap();
+            .err()
+            .unwrap();
         assert_eq!(2, statistic.write.seek);
         match e {
             Error(box ErrorInner::Mvcc(MvccError(box MvccErrorInner::KeyIsLocked(_)))) => (),
@@ -377,7 +376,7 @@ mod tests {
             99,
             102,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(2, statistic.write.seek);
         let e = prewrite(
             &engine,
@@ -387,8 +386,8 @@ mod tests {
             101,
             None,
         )
-        .err()
-        .unwrap();
+            .err()
+            .unwrap();
         match e {
             Error(box ErrorInner::Mvcc(MvccError(box MvccErrorInner::WriteConflict {
                 ..
@@ -403,8 +402,8 @@ mod tests {
             104,
             None,
         )
-        .err()
-        .unwrap();
+            .err()
+            .unwrap();
         match e {
             Error(box ErrorInner::Mvcc(MvccError(box MvccErrorInner::AlreadyExist { .. }))) => (),
             _ => panic!("error type not match"),
@@ -427,7 +426,7 @@ mod tests {
             104,
             None,
         )
-        .unwrap();
+            .unwrap();
         // All keys are prewrited successful with only one seek operations.
         assert_eq!(1, statistic.write.seek);
         let keys: Vec<Key> = mutations.iter().map(|m| m.key().clone()).collect();
@@ -474,7 +473,7 @@ mod tests {
             100,
             None,
         )
-        .unwrap();
+            .unwrap();
         // Rollback to make tombstones in lock-cf.
         rollback(&engine, &mut statistic, keys, 100).unwrap();
         // Gc rollback flags store in write-cf to make sure the next prewrite operation will skip
@@ -494,7 +493,7 @@ mod tests {
             110,
             None,
         )
-        .unwrap();
+            .unwrap();
         let d = perf.delta();
         assert_eq!(1, statistic.write.seek);
         assert_eq!(d.0.internal_delete_skipped_count, 0);
@@ -521,7 +520,7 @@ mod tests {
             10,
             Some(15),
         )
-        .unwrap();
+            .unwrap();
         must_unlocked(&engine, key);
         must_get(&engine, key, 12, value);
         must_get_commit_ts(&engine, key, 10, 11);
@@ -540,6 +539,6 @@ mod tests {
             20,
             Some(30),
         )
-        .unwrap_err();
+            .unwrap_err();
     }
 }

@@ -22,7 +22,7 @@ use crate::server::resolve::StoreAddrResolver;
 use crate::server::{Error, Result};
 use crate::storage::{
     lock_manager::{Lock, LockManager as LockManagerTrait, WaitTimeout},
-    ProcessResult, StorageCallback,
+    ProcessResult,
 };
 use raftstore::coprocessor::CoprocessorHost;
 
@@ -229,7 +229,6 @@ impl LockManagerTrait for LockManager {
     fn wait_for(
         &self,
         start_ts: TimeStamp,
-        cb: StorageCallback,
         pr: ProcessResult,
         lock: Lock,
         is_first_lock: bool,

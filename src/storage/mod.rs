@@ -55,20 +55,18 @@ pub use self::{
     },
     read_pool::{build_read_pool, build_read_pool_for_test},
     txn::{ProcessResult, Scanner, SnapshotStore, Store},
-    types::{PessimisticLockRes, PrewriteResult, SecondaryLocksStatus, StorageCallback, TxnStatus},
+    types::{PessimisticLockRes, PrewriteResult, SecondaryLocksStatus, TxnStatus},
 };
 
 use crate::read_pool::{ReadPool, ReadPoolHandle};
 use crate::storage::metrics::CommandKind;
-use crate::storage::types::StorageCallbackParam;
 use crate::storage::{
     config::Config,
     kv::{with_tls_engine, Modify, WriteData},
     lock_manager::{DummyLockManager, LockManager},
     metrics::*,
     mvcc::PointGetterBuilder,
-    txn::{commands::TypedCommand, scheduler::Scheduler as TxnScheduler, Command},
-    types::StorageCallbackType,
+    txn::{scheduler::Scheduler as TxnScheduler, Command},
 };
 use concurrency_manager::ConcurrencyManager;
 use engine_traits::{CfName, ALL_CFS, CF_DEFAULT, DATA_CFS};
@@ -172,9 +170,9 @@ macro_rules! check_key_size {
         for k in $key_iter {
             let key_size = k.len();
             if key_size > $max_key_size {
-                return futures::future::ok(StorageCallbackParam::Err(Error::from(
+                return futures::future::ok(ProcessResult::Failed{err: Error::from(
                     ErrorInner::KeyTooLarge(key_size, $max_key_size),
-                )));
+                )});
             }
         }
     };
@@ -226,7 +224,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
     fn snapshot(
         engine: &E,
         ctx: SnapContext<'_>,
-    ) -> impl std::future::Future<Output = Result<E::Snap>> {
+    ) -> impl std::future::Future<Output=Result<E::Snap>> {
         kv::snapshot(engine, ctx)
             .map_err(txn::Error::from)
             .map_err(Error::from)
@@ -238,8 +236,8 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
 
     #[inline]
     fn with_tls_engine<F, R>(f: F) -> R
-    where
-        F: FnOnce(&E) -> R,
+        where
+            F: FnOnce(&E) -> R,
     {
         // Safety: the read pools ensure that a TLS engine exists.
         unsafe { with_tls_engine(f) }
@@ -253,7 +251,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         mut ctx: Context,
         key: Key,
         start_ts: TimeStamp,
-    ) -> impl Future<Output = Result<(Option<Value>, Statistics, PerfStatisticsDelta)>> {
+    ) -> impl Future<Output=Result<(Option<Value>, Statistics, PerfStatisticsDelta)>> {
         const CMD: CommandKind = CommandKind::get;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -333,7 +331,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
     pub fn batch_get_command(
         &self,
         requests: Vec<GetRequest>,
-    ) -> impl Future<Output = Result<Vec<Result<(Option<Vec<u8>>, Statistics, PerfStatisticsDelta)>>>>
+    ) -> impl Future<Output=Result<Vec<Result<(Option<Vec<u8>>, Statistics, PerfStatisticsDelta)>>>>
     {
         const CMD: CommandKind = CommandKind::batch_get_command;
         // all requests in a batch have the same region, epoch, term, replica_read
@@ -463,7 +461,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         mut ctx: Context,
         keys: Vec<Key>,
         start_ts: TimeStamp,
-    ) -> impl Future<Output = Result<(Vec<Result<KvPair>>, Statistics, PerfStatisticsDelta)>> {
+    ) -> impl Future<Output=Result<(Vec<Result<KvPair>>, Statistics, PerfStatisticsDelta)>> {
         const CMD: CommandKind = CommandKind::batch_get;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -563,7 +561,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         start_ts: TimeStamp,
         key_only: bool,
         reverse_scan: bool,
-    ) -> impl Future<Output = Result<Vec<Result<KvPair>>>> {
+    ) -> impl Future<Output=Result<Vec<Result<KvPair>>>> {
         const CMD: CommandKind = CommandKind::scan;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -685,7 +683,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         }
     }
 
-    pub fn sched_txn_command(&self, cmd: Command) -> impl Future<Output = StorageCallbackParam> {
+    pub fn sched_txn_command(&self, cmd: Command) -> impl Future<Output=StorageCallbackParam> {
         use crate::storage::txn::commands::{
             AcquirePessimisticLock, Prewrite, PrewritePessimistic,
         };
@@ -775,7 +773,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         ctx: Context,
         cf: String,
         key: Vec<u8>,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>>> {
+    ) -> impl Future<Output=Result<Option<Vec<u8>>>> {
         const CMD: CommandKind = CommandKind::raw_get;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -825,7 +823,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
     pub fn raw_batch_get_command(
         &self,
         gets: Vec<RawGetRequest>,
-    ) -> impl Future<Output = Result<Vec<Result<Option<Vec<u8>>>>>> {
+    ) -> impl Future<Output=Result<Vec<Result<Option<Vec<u8>>>>>> {
         const CMD: CommandKind = CommandKind::raw_batch_get_command;
         // all requests in a batch have the same region, epoch, term, replica_read
         let priority = gets[0].get_context().get_priority();
@@ -899,7 +897,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         ctx: Context,
         cf: String,
         keys: Vec<Vec<u8>>,
-    ) -> impl Future<Output = Result<Vec<Result<KvPair>>>> {
+    ) -> impl Future<Output=Result<Vec<Result<KvPair>>>> {
         const CMD: CommandKind = CommandKind::raw_batch_get;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -1196,7 +1194,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         limit: usize,
         key_only: bool,
         reverse_scan: bool,
-    ) -> impl Future<Output = Result<Vec<Result<KvPair>>>> {
+    ) -> impl Future<Output=Result<Vec<Result<KvPair>>>> {
         const CMD: CommandKind = CommandKind::raw_scan;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -1245,7 +1243,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
                             &mut statistics,
                             key_only,
                         )
-                        .map_err(Error::from)
+                            .map_err(Error::from)
                     } else {
                         Self::forward_raw_scan(
                             &snapshot,
@@ -1256,7 +1254,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
                             &mut statistics,
                             key_only,
                         )
-                        .map_err(Error::from)
+                            .map_err(Error::from)
                     };
 
                     metrics::tls_collect_read_flow(ctx.get_region_id(), &statistics);
@@ -1329,7 +1327,7 @@ impl<E: Engine, L: LockManager> Storage<E, L> {
         each_limit: usize,
         key_only: bool,
         reverse_scan: bool,
-    ) -> impl Future<Output = Result<Vec<Result<KvPair>>>> {
+    ) -> impl Future<Output=Result<Vec<Result<KvPair>>>> {
         const CMD: CommandKind = CommandKind::raw_batch_scan;
         let priority = ctx.get_priority();
         let priority_tag = get_priority_tag(priority);
@@ -1434,7 +1432,7 @@ fn get_priority_tag(priority: CommandPri) -> CommandPriority {
 
 fn prepare_snap_ctx<'a>(
     pb_ctx: &'a Context,
-    keys: impl IntoIterator<Item = &'a Key> + Clone,
+    keys: impl IntoIterator<Item=&'a Key> + Clone,
     start_ts: TimeStamp,
     bypass_locks: &'a TsSet,
     concurrency_manager: &ConcurrencyManager,
@@ -1575,8 +1573,8 @@ pub mod test_util {
     }
 
     pub fn expect_error<T, F>(err_matcher: F, x: Result<T>)
-    where
-        F: FnOnce(Error) + Send + 'static,
+        where
+            F: FnOnce(Error) + Send + 'static,
     {
         match x {
             Err(e) => err_matcher(e),
@@ -1592,8 +1590,8 @@ pub mod test_util {
     }
 
     pub fn expect_fail_callback<T, F>(done: Sender<i32>, id: i32, err_matcher: F) -> Callback<T>
-    where
-        F: FnOnce(Error) + Send + 'static,
+        where
+            F: FnOnce(Error) + Send + 'static,
     {
         Box::new(move |x: Result<T>| {
             expect_error(err_matcher, x);
@@ -1645,14 +1643,13 @@ pub mod test_util {
         })
     }
 
-    type PessimisticLockCommand = TypedCommand<Result<PessimisticLockRes>>;
 
     pub fn new_acquire_pessimistic_lock_command(
         keys: Vec<(Key, bool)>,
         start_ts: impl Into<TimeStamp>,
         for_update_ts: impl Into<TimeStamp>,
         return_values: bool,
-    ) -> PessimisticLockCommand {
+    ) -> commands::AcquirePessimisticLock {
         let primary = keys[0].0.clone().to_raw().unwrap();
         let for_update_ts: TimeStamp = for_update_ts.into();
         commands::AcquirePessimisticLock::new(
@@ -1746,8 +1743,8 @@ mod tests {
         expect_error(
             |e| match e {
                 Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                    box mvcc::ErrorInner::KeyIsLocked { .. },
-                ))))) => (),
+                                                                               box mvcc::ErrorInner::KeyIsLocked { .. },
+                                                                           ))))) => (),
                 e => panic!("unexpected error chain: {:?}", e),
             },
             block_on(storage.get(Context::default(), Key::from_raw(b"x"), 101.into())),
@@ -1785,8 +1782,8 @@ mod tests {
             engine,
             DummyLockManager {},
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         let (tx, rx) = channel();
         storage
             .sched_txn_command(
@@ -1801,10 +1798,10 @@ mod tests {
                 ),
                 expect_fail_callback(tx, 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(
-                            ..,
-                        ))),
-                    ))))) => {}
+                                                                                   box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(
+                                                                                       ..,
+                                                                                   ))),
+                                                                               ))))) => {}
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -1813,8 +1810,8 @@ mod tests {
         expect_error(
             |e| match e {
                 Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                    box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
-                ))))) => (),
+                                                                               box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
+                                                                           ))))) => (),
                 e => panic!("unexpected error chain: {:?}", e),
             },
             block_on(storage.get(Context::default(), Key::from_raw(b"x"), 1.into())),
@@ -1822,8 +1819,8 @@ mod tests {
         expect_error(
             |e| match e {
                 Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                    box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
-                ))))) => (),
+                                                                               box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
+                                                                           ))))) => (),
                 e => panic!("unexpected error chain: {:?}", e),
             },
             block_on(storage.scan(
@@ -1840,8 +1837,8 @@ mod tests {
         expect_error(
             |e| match e {
                 Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                    box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
-                ))))) => (),
+                                                                               box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(..))),
+                                                                           ))))) => (),
                 e => panic!("unexpected error chain: {:?}", e),
             },
             block_on(storage.batch_get(
@@ -1854,15 +1851,15 @@ mod tests {
             create_get_request(b"c", 1),
             create_get_request(b"d", 1),
         ]))
-        .unwrap();
+            .unwrap();
         for v in x {
             expect_error(
                 |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(
-                            ..,
-                        ))),
-                    ))))) => {}
+                                                                                   box mvcc::ErrorInner::Engine(EngineError(box EngineErrorInner::Request(
+                                                                                       ..,
+                                                                                   ))),
+                                                                               ))))) => {}
                     e => panic!("unexpected error chain: {:?}", e),
                 },
                 v,
@@ -1904,7 +1901,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward
         expect_multi_values(
@@ -1919,7 +1916,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with bound
         expect_multi_values(
@@ -1934,7 +1931,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with bound
         expect_multi_values(
@@ -1949,7 +1946,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with limit
         expect_multi_values(
@@ -1964,7 +1961,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with limit
         expect_multi_values(
@@ -1979,7 +1976,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         storage
@@ -2015,7 +2012,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward
         expect_multi_values(
@@ -2034,7 +2031,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with sample step
         expect_multi_values(
@@ -2052,7 +2049,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with sample step
         expect_multi_values(
@@ -2070,7 +2067,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with sample step and limit
         expect_multi_values(
@@ -2085,7 +2082,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with sample step and limit
         expect_multi_values(
@@ -2100,7 +2097,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with bound
         expect_multi_values(
@@ -2118,7 +2115,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with bound
         expect_multi_values(
@@ -2136,7 +2133,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         // Forward with limit
@@ -2155,7 +2152,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with limit
         expect_multi_values(
@@ -2173,7 +2170,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
     }
 
@@ -2196,13 +2193,13 @@ mod tests {
             ];
             RocksEngine::new(&path, &cfs, Some(cfs_opts), cache.is_some())
         }
-        .unwrap();
+            .unwrap();
         let storage = TestStorageBuilder::<_, DummyLockManager>::from_engine_and_lock_mgr(
             engine,
             DummyLockManager {},
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         let (tx, rx) = channel();
         storage
             .sched_txn_command(
@@ -2232,7 +2229,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward
         expect_multi_values(
@@ -2247,7 +2244,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with bound
         expect_multi_values(
@@ -2262,7 +2259,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with bound
         expect_multi_values(
@@ -2277,7 +2274,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with limit
         expect_multi_values(
@@ -2292,7 +2289,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with limit
         expect_multi_values(
@@ -2307,7 +2304,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         storage
@@ -2343,7 +2340,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward
         expect_multi_values(
@@ -2362,7 +2359,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Forward with bound
         expect_multi_values(
@@ -2377,7 +2374,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with bound
         expect_multi_values(
@@ -2392,7 +2389,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         // Forward with limit
@@ -2408,7 +2405,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         // Backward with limit
         expect_multi_values(
@@ -2423,7 +2420,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
     }
 
@@ -2455,8 +2452,8 @@ mod tests {
                 vec![Key::from_raw(b"c"), Key::from_raw(b"d")],
                 2.into(),
             ))
-            .unwrap()
-            .0,
+                .unwrap()
+                .0,
         );
         storage
             .sched_txn_command(
@@ -2490,8 +2487,8 @@ mod tests {
                 ],
                 5.into(),
             ))
-            .unwrap()
-            .0,
+                .unwrap()
+                .0,
         );
     }
 
@@ -2527,12 +2524,12 @@ mod tests {
             create_get_request(b"c", 2),
             create_get_request(b"d", 2),
         ]))
-        .unwrap();
+            .unwrap();
         expect_error(
             |e| match e {
                 Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                    box mvcc::ErrorInner::KeyIsLocked(..),
-                ))))) => {}
+                                                                               box mvcc::ErrorInner::KeyIsLocked(..),
+                                                                           ))))) => {}
                 e => panic!("unexpected error chain: {:?}", e),
             },
             x.remove(0),
@@ -2560,11 +2557,11 @@ mod tests {
             create_get_request(b"a", 5),
             create_get_request(b"b", 5),
         ]))
-        .unwrap()
-        .into_iter()
-        .map(|x| x.unwrap())
-        .map(|(x, _, _)| x)
-        .collect();
+            .unwrap()
+            .into_iter()
+            .map(|x| x.unwrap())
+            .map(|(x, _, _)| x)
+            .collect();
         assert_eq!(
             x,
             vec![
@@ -2649,8 +2646,8 @@ mod tests {
                 ),
                 expect_fail_callback(tx, 6, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::WriteConflict { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::WriteConflict { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -2772,8 +2769,8 @@ mod tests {
                 ),
                 expect_fail_callback(tx.clone(), 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::KeyIsLocked(info),
-                    ))))) => assert_eq!(info.get_lock_ttl(), 100),
+                                                                                   box mvcc::ErrorInner::KeyIsLocked(info),
+                                                                               ))))) => assert_eq!(info.get_lock_ttl(), 100),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -3375,7 +3372,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         results = results.split_off(10);
         expect_multi_values(
@@ -3389,7 +3386,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         let mut results: Vec<Option<KvPair>> = test_data
             .clone()
@@ -3407,7 +3404,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         results = results.split_off(10);
         expect_multi_values(
@@ -3421,7 +3418,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         let results: Vec<Option<KvPair>> = test_data
             .clone()
@@ -3440,7 +3437,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         let results: Vec<Option<KvPair>> = test_data
             .clone()
@@ -3460,7 +3457,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         // Scan with end_key
@@ -3482,7 +3479,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         let results: Vec<Option<KvPair>> = test_data
             .clone()
@@ -3502,7 +3499,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         // Reverse scan with end_key
@@ -3525,7 +3522,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
         let results: Vec<Option<KvPair>> = test_data
             .into_iter()
@@ -3544,7 +3541,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         // End key tests. Confirm that lower/upper bound works correctly.
@@ -3556,8 +3553,8 @@ mod tests {
             (b"d1".to_vec(), b"dd11".to_vec()),
             (b"d2".to_vec(), b"dd22".to_vec()),
         ]
-        .into_iter()
-        .map(|(k, v)| Some((k, v)));
+            .into_iter()
+            .map(|(k, v)| Some((k, v)));
         let engine = storage.get_engine();
         expect_multi_values(
             results.clone().collect(),
@@ -3566,7 +3563,7 @@ mod tests {
                     &engine,
                     SnapContext::default(),
                 )
-                .await?;
+                    .await?;
                 <Storage<RocksEngine, DummyLockManager>>::forward_raw_scan(
                     &snapshot,
                     &"".to_string(),
@@ -3577,7 +3574,7 @@ mod tests {
                     false,
                 )
             })
-            .unwrap(),
+                .unwrap(),
         );
         expect_multi_values(
             results.rev().collect(),
@@ -3586,7 +3583,7 @@ mod tests {
                     &engine,
                     SnapContext::default(),
                 )
-                .await?;
+                    .await?;
                 <Storage<RocksEngine, DummyLockManager>>::reverse_raw_scan(
                     &snapshot,
                     &"".to_string(),
@@ -3597,7 +3594,7 @@ mod tests {
                     false,
                 )
             })
-            .unwrap(),
+                .unwrap(),
         );
     }
 
@@ -3781,7 +3778,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3809,7 +3806,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3833,7 +3830,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3857,7 +3854,7 @@ mod tests {
                 true,
                 false,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3876,14 +3873,14 @@ mod tests {
             (b"b3".to_vec(), b"b".to_vec()),
             (b"c3".to_vec(), b"c".to_vec()),
         ]
-        .into_iter()
-        .map(|(s, e)| {
-            let mut range = KeyRange::default();
-            range.set_start_key(s);
-            range.set_end_key(e);
-            range
-        })
-        .collect();
+            .into_iter()
+            .map(|(s, e)| {
+                let mut range = KeyRange::default();
+                range.set_start_key(s);
+                range.set_end_key(e);
+                range
+            })
+            .collect();
         expect_multi_values(
             results,
             block_on(storage.raw_batch_scan(
@@ -3894,7 +3891,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3923,7 +3920,7 @@ mod tests {
                 false,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
 
         let results = vec![
@@ -3942,14 +3939,14 @@ mod tests {
             (b"b3".to_vec(), b"b".to_vec()),
             (b"c3".to_vec(), b"c".to_vec()),
         ]
-        .into_iter()
-        .map(|(s, e)| {
-            let mut range = KeyRange::default();
-            range.set_start_key(s);
-            range.set_end_key(e);
-            range
-        })
-        .collect();
+            .into_iter()
+            .map(|(s, e)| {
+                let mut range = KeyRange::default();
+                range.set_start_key(s);
+                range.set_end_key(e);
+                range
+            })
+            .collect();
         expect_multi_values(
             results,
             block_on(storage.raw_batch_scan(
@@ -3960,7 +3957,7 @@ mod tests {
                 true,
                 true,
             ))
-            .unwrap(),
+                .unwrap(),
         );
     }
 
@@ -4426,8 +4423,8 @@ mod tests {
                 commands::TxnHeartBeat::new(k.clone(), 10.into(), 100, Context::default()),
                 expect_fail_callback(tx.clone(), 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::TxnNotFound { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::TxnNotFound { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -4485,8 +4482,8 @@ mod tests {
                 commands::TxnHeartBeat::new(k, 11.into(), 150, Context::default()),
                 expect_fail_callback(tx, 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::TxnNotFound { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::TxnNotFound { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -4523,8 +4520,8 @@ mod tests {
                 ),
                 expect_fail_callback(tx.clone(), 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::TxnNotFound { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::TxnNotFound { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -4560,8 +4557,8 @@ mod tests {
                 ),
                 expect_fail_callback(tx.clone(), 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::WriteConflict { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::WriteConflict { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -4613,7 +4610,7 @@ mod tests {
                             3,
                             ts(10, 1),
                         )
-                        .use_async_commit(vec![b"k1".to_vec(), b"k2".to_vec()]),
+                            .use_async_commit(vec![b"k1".to_vec(), b"k2".to_vec()]),
                         false,
                     ),
                 ),
@@ -4681,8 +4678,8 @@ mod tests {
                 commands::Commit::new(vec![k], ts(25, 0), ts(28, 0), Context::default()),
                 expect_fail_callback(tx, 0, |e| match e {
                     Error(box ErrorInner::Txn(TxnError(box TxnErrorInner::Mvcc(mvcc::Error(
-                        box mvcc::ErrorInner::TxnLockNotFound { .. },
-                    ))))) => (),
+                                                                                   box mvcc::ErrorInner::TxnLockNotFound { .. },
+                                                                               ))))) => (),
                     e => panic!("unexpected error chain: {:?}", e),
                 }),
             )
@@ -5078,8 +5075,8 @@ mod tests {
             TestEngineBuilder::new().build().unwrap(),
             ProxyLockMgr::new(msg_tx),
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
 
         let (k, v) = (b"k".to_vec(), b"v".to_vec());
         let (tx, rx) = channel();
@@ -5192,8 +5189,8 @@ mod tests {
             TestEngineBuilder::new().build().unwrap(),
             lock_mgr,
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
 
         let (tx, rx) = channel();
         let prewrite_locks = |keys: &[Key], ts: TimeStamp| {
@@ -5533,7 +5530,7 @@ mod tests {
                 false,
                 false,
             ))
-            .unwrap_err(),
+                .unwrap_err(),
         );
         assert_eq!(key_error.get_locked().get_key(), b"key");
 
