@@ -13,7 +13,7 @@ use crate::storage::txn::actions::shared::handle_1pc;
 use crate::storage::txn::commands::{ResponsePolicy, WriteCommand, WriteContext, WriteResult};
 use crate::storage::txn::{Error, ErrorInner, Result};
 use crate::storage::{
-    txn::commands::{Command, CommandExt, TypedCommand},
+    txn::commands::{Command, CommandExt},
     types::PrewriteResult,
     Context, Error as StorageError, ProcessResult, Snapshot,
 };
@@ -83,7 +83,7 @@ impl Prewrite {
         mutations: Vec<Mutation>,
         primary: Vec<u8>,
         start_ts: TimeStamp,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         Prewrite::new(
             mutations,
             primary,
@@ -105,7 +105,7 @@ impl Prewrite {
         primary: Vec<u8>,
         start_ts: TimeStamp,
         max_commit_ts: TimeStamp,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         Prewrite::new(
             mutations,
             primary,
@@ -127,7 +127,7 @@ impl Prewrite {
         primary: Vec<u8>,
         start_ts: TimeStamp,
         lock_ttl: u64,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         Prewrite::new(
             mutations,
             primary,
@@ -148,7 +148,7 @@ impl Prewrite {
         primary: Vec<u8>,
         start_ts: TimeStamp,
         ctx: Context,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         Prewrite::new(
             mutations,
             primary,

@@ -850,7 +850,10 @@ mod tests {
         SnapContext, TestEngineBuilder, WriteData,
     };
     use crate::storage::lock_manager::DummyLockManager;
-    use crate::storage::{txn::commands, Engine, Storage, TestStorageBuilder};
+    use crate::storage::{
+        txn::commands, Engine, PrewriteResult, Result as StorageResult, Storage,
+        TestStorageBuilder, TxnStatus,
+    };
 
     use super::*;
 
@@ -1023,7 +1026,7 @@ mod tests {
         let start_ts = start_ts.into();
 
         // Write these data to the storage.
-        wait_op!(|cb| storage.sched_txn_command(
+        wait_op!(|cb| storage.sched_txn_command::<PrewriteResult>(
             commands::Prewrite::with_defaults(mutations, primary, start_ts),
             cb,
         ))
@@ -1032,7 +1035,7 @@ mod tests {
 
         // Commit.
         let keys: Vec<_> = init_keys.iter().map(|k| Key::from_raw(k)).collect();
-        wait_op!(|cb| storage.sched_txn_command(
+        wait_op!(|cb| storage.sched_txn_command::<TxnStatus>(
             commands::Commit::new(keys, start_ts, commit_ts.into(), Context::default()),
             cb
         ))
@@ -1197,7 +1200,7 @@ mod tests {
 
             let (tx, rx) = channel();
             storage
-                .sched_txn_command(
+                .sched_txn_command::<PrewriteResult>(
                     commands::Prewrite::with_defaults(vec![mutation], k, lock_ts.into()),
                     Box::new(move |res| tx.send(res).unwrap()),
                 )

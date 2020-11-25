@@ -8,7 +8,7 @@ use crate::storage::mvcc::MvccTxn;
 use crate::storage::mvcc::{Error as MvccError, ErrorInner as MvccErrorInner};
 use crate::storage::txn::actions::shared::handle_1pc;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ResponsePolicy, TypedCommand, WriteCommand, WriteContext, WriteResult,
+    Command, CommandExt, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::{pessimistic_prewrite, Error, ErrorInner, Result};
 use crate::storage::types::PrewriteResult;
@@ -78,7 +78,7 @@ impl PrewritePessimistic {
         primary: Vec<u8>,
         start_ts: TimeStamp,
         for_update_ts: TimeStamp,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         use crate::storage::Context;
         PrewritePessimistic::new(
             mutations,
@@ -93,6 +93,7 @@ impl PrewritePessimistic {
             false,
             Context::default(),
         )
+        .into()
     }
 
     #[cfg(test)]
@@ -102,7 +103,7 @@ impl PrewritePessimistic {
         start_ts: TimeStamp,
         for_update_ts: TimeStamp,
         max_commit_ts: TimeStamp,
-    ) -> TypedCommand<PrewriteResult> {
+    ) -> Command {
         use crate::storage::Context;
         PrewritePessimistic::new(
             mutations,
@@ -117,6 +118,7 @@ impl PrewritePessimistic {
             true,
             Context::default(),
         )
+        .into()
     }
 }
 

@@ -194,7 +194,7 @@ impl<E: Engine> SyncTestStorage<E> {
         primary: Vec<u8>,
         start_ts: impl Into<TimeStamp>,
     ) -> Result<PrewriteResult> {
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<PrewriteResult>(
             commands::Prewrite::with_context(mutations, primary, start_ts.into(), ctx),
             cb,
         ))
@@ -208,7 +208,7 @@ impl<E: Engine> SyncTestStorage<E> {
         start_ts: impl Into<TimeStamp>,
         commit_ts: impl Into<TimeStamp>,
     ) -> Result<TxnStatus> {
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<TxnStatus>(
             commands::Commit::new(keys, start_ts.into(), commit_ts.into(), ctx),
             cb,
         ))
@@ -222,7 +222,7 @@ impl<E: Engine> SyncTestStorage<E> {
         start_ts: impl Into<TimeStamp>,
         current_ts: impl Into<TimeStamp>,
     ) -> Result<()> {
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<()>(
             commands::Cleanup::new(key, start_ts.into(), current_ts.into(), ctx),
             cb,
         ))
@@ -237,7 +237,7 @@ impl<E: Engine> SyncTestStorage<E> {
     ) -> Result<()> {
         wait_op!(|cb| self
             .store
-            .sched_txn_command(commands::Rollback::new(keys, start_ts.into(), ctx), cb))
+            .sched_txn_command::<()>(commands::Rollback::new(keys, start_ts.into(), ctx), cb))
         .unwrap()
     }
 
@@ -248,7 +248,7 @@ impl<E: Engine> SyncTestStorage<E> {
         start_key: Option<Key>,
         limit: usize,
     ) -> Result<Vec<LockInfo>> {
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<Vec<LockInfo>>(
             commands::ScanLock::new(max_ts.into(), start_key, limit, ctx),
             cb,
         ))
@@ -266,7 +266,7 @@ impl<E: Engine> SyncTestStorage<E> {
             start_ts.into(),
             commit_ts.map(Into::into).unwrap_or_else(TimeStamp::zero),
         );
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<()>(
             commands::ResolveLockReadPhase::new(txn_status, None, ctx),
             cb,
         ))
@@ -279,7 +279,7 @@ impl<E: Engine> SyncTestStorage<E> {
         txns: Vec<(TimeStamp, TimeStamp)>,
     ) -> Result<()> {
         let txn_status: HashMap<TimeStamp, TimeStamp> = txns.into_iter().collect();
-        wait_op!(|cb| self.store.sched_txn_command(
+        wait_op!(|cb| self.store.sched_txn_command::<()>(
             commands::ResolveLockReadPhase::new(txn_status, None, ctx),
             cb,
         ))

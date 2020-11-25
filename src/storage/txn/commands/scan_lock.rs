@@ -1,7 +1,7 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
 use crate::storage::mvcc::MvccReader;
-use crate::storage::txn::commands::{Command, CommandExt, ReadCommand, TypedCommand};
+use crate::storage::txn::commands::{Command, CommandExt, ReadCommand};
 use crate::storage::txn::sched_pool::tls_collect_keyread_histogram_vec;
 use crate::storage::txn::{LockInfo, ProcessResult, Result};
 use crate::storage::{ScanMode, Snapshot, Statistics};

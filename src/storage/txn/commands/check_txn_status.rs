@@ -8,8 +8,7 @@ use crate::storage::mvcc::txn::MissingLockAction;
 use crate::storage::mvcc::MvccTxn;
 use crate::storage::txn::actions::check_txn_status::*;
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
-    WriteResult,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::Result;
 use crate::storage::{ProcessResult, Snapshot, TxnStatus};

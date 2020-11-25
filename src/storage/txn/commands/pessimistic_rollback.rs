@@ -4,11 +4,10 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::{MvccTxn, Result as MvccResult};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResponsePolicy, TypedCommand, WriteCommand, WriteContext,
-    WriteResult,
+    Command, CommandExt, ReleasedLocks, ResponsePolicy, WriteCommand, WriteContext, WriteResult,
 };
 use crate::storage::txn::Result;
-use crate::storage::{ProcessResult, Result as StorageResult, Snapshot};
+use crate::storage::{ProcessResult, Snapshot};
 use std::mem;
 use txn_types::{Key, LockType, TimeStamp};
 

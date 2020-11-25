@@ -4,8 +4,8 @@ use crate::storage::kv::WriteData;
 use crate::storage::lock_manager::LockManager;
 use crate::storage::mvcc::{MvccTxn, MAX_TXN_WRITE_SIZE};
 use crate::storage::txn::commands::{
-    Command, CommandExt, ReleasedLocks, ResolveLockReadPhase, ResponsePolicy, TypedCommand,
-    WriteCommand, WriteContext, WriteResult,
+    Command, CommandExt, ReleasedLocks, ResolveLockReadPhase, ResponsePolicy, WriteCommand,
+    WriteContext, WriteResult,
 };
 use crate::storage::txn::{cleanup, commit, Error, ErrorInner, Result};
 use crate::storage::{ProcessResult, Snapshot};
@@ -112,7 +112,7 @@ impl<S: Snapshot, L: LockManager> WriteCommand<S, L> for ResolveLock {
             ProcessResult::Res
         } else {
             ProcessResult::NextCommand {
-                cmd: ResolveLockReadPhase::new(txn_status, scan_key.take(), ctx.clone()).into(),
+                cmd: ResolveLockReadPhase::new(txn_status, scan_key.take(), ctx.clone()),
             }
         };
         let write_data = WriteData::from_modifies(txn.into_modifies());

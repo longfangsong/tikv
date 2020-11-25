@@ -31,11 +31,11 @@ macro_rules! command {
             pub fn new(
                 $($arg: $arg_ty,)*
                 ctx: crate::storage::Context,
-            ) -> TypedCommand<$cmd_ty> {
+            ) -> Command {
                 Command::$cmd($cmd {
                         ctx,
                         $($arg,)*
-                }).into()
+                })
             }
         }
 

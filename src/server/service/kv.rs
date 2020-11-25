@@ -11,6 +11,7 @@ use crate::server::metrics::*;
 use crate::server::snap::Task as SnapTask;
 use crate::server::Error;
 use crate::server::Result as ServerResult;
+use crate::storage::Result as StorageResult;
 use crate::storage::{
     errors::{
         extract_committed, extract_key_error, extract_key_errors, extract_kv_pairs,
@@ -18,7 +19,7 @@ use crate::storage::{
     },
     kv::Engine,
     lock_manager::LockManager,
-    SecondaryLocksStatus, Storage, TxnStatus,
+    PessimisticLockRes, PrewriteResult, SecondaryLocksStatus, Storage, TxnStatus,
 };
 use engine_rocks::RocksEngine;
 use futures::compat::Future01CompatExt;
@@ -1589,150 +1590,359 @@ fn future_cop<E: Engine>(
     async move { Ok(ret.await) }
 }
 
-macro_rules! txn_command_future {
-    ($fn_name: ident, $req_ty: ident, $resp_ty: ident, ($req: ident) $prelude: stmt; ($v: ident, $resp: ident) { $else_branch: expr }) => {
-        fn $fn_name<E: Engine, L: LockManager>(
-            storage: &Storage<E, L>,
-            $req: $req_ty,
-        ) -> impl Future<Output = ServerResult<$resp_ty>> {
-            $prelude
-            let (cb, f) = paired_future_callback();
-            let res = storage.sched_txn_command($req.into(), cb);
-
-            async move {
-                let $v = match res {
-                    Err(e) => Err(e),
-                    Ok(_) => f.await?,
-                };
-                let mut $resp = $resp_ty::default();
-                if let Some(err) = extract_region_error(&$v) {
-                    $resp.set_region_error(err);
-                } else {
-                    $else_branch;
+fn future_prewrite<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: PrewriteRequest,
+) -> impl Future<Output = ServerResult<PrewriteResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<PrewriteResult>>();
+    let res = storage.sched_txn_command::<PrewriteResult>(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = PrewriteResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            {
+                if let Ok(v) = &v {
+                    resp.set_min_commit_ts(v.min_commit_ts.into_inner());
+                    resp.set_one_pc_commit_ts(v.one_pc_commit_ts.into_inner());
                 }
-                Ok($resp)
-            }
+                resp.set_errors(extract_key_errors(v.map(|v| v.locks)).into());
+            };
         }
-    };
-    ($fn_name: ident, $req_ty: ident, $resp_ty: ident, ($v: ident, $resp: ident) { $else_branch: expr }) => {
-        txn_command_future!($fn_name, $req_ty, $resp_ty, (req) {}; ($v, $resp) { $else_branch });
-    };
+        Ok(resp)
+    }
 }
 
-txn_command_future!(future_prewrite, PrewriteRequest, PrewriteResponse, (v, resp) {{
-    if let Ok(v) = &v {
-        resp.set_min_commit_ts(v.min_commit_ts.into_inner());
-        resp.set_one_pc_commit_ts(v.one_pc_commit_ts.into_inner());
-    }
-    resp.set_errors(extract_key_errors(v.map(|v| v.locks)).into());
-}});
-txn_command_future!(future_acquire_pessimistic_lock, PessimisticLockRequest, PessimisticLockResponse, (v, resp) {
-    match v {
-        Ok(Ok(res)) => resp.set_values(res.into_vec().into()),
-        Err(e) | Ok(Err(e)) => resp.set_errors(vec![extract_key_error(&e)].into()),
-    }
-});
-txn_command_future!(future_pessimistic_rollback, PessimisticRollbackRequest, PessimisticRollbackResponse, (v, resp) {
-    resp.set_errors(extract_key_errors(v).into())
-});
-txn_command_future!(future_batch_rollback, BatchRollbackRequest, BatchRollbackResponse, (v, resp) {
-    if let Err(e) = v {
-        resp.set_error(extract_key_error(&e));
-    }
-});
-txn_command_future!(future_resolve_lock, ResolveLockRequest, ResolveLockResponse, (v, resp) {
-    if let Err(e) = v {
-        resp.set_error(extract_key_error(&e));
-    }
-});
-txn_command_future!(future_commit, CommitRequest, CommitResponse, (v, resp) {
-    match v {
-        Ok(TxnStatus::Committed { commit_ts }) => {
-            resp.set_commit_version(commit_ts.into_inner())
-        }
-        Ok(_) => unreachable!(),
-        Err(e) => resp.set_error(extract_key_error(&e)),
-    }
-});
-txn_command_future!(future_cleanup, CleanupRequest, CleanupResponse, (v, resp) {
-    if let Err(e) = v {
-        if let Some(ts) = extract_committed(&e) {
-            resp.set_commit_version(ts.into_inner());
+fn future_acquire_pessimistic_lock<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: PessimisticLockRequest,
+) -> impl Future<Output = ServerResult<PessimisticLockResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<StorageResult<PessimisticLockRes>>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = PessimisticLockResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
         } else {
-            resp.set_error(extract_key_error(&e));
+            match v {
+                Ok(Ok(res)) => resp.set_values(res.into_vec().into()),
+                Err(e) | Ok(Err(e)) => resp.set_errors(vec![extract_key_error(&e)].into()),
+            };
         }
+        Ok(resp)
     }
-});
-txn_command_future!(future_txn_heart_beat, TxnHeartBeatRequest, TxnHeartBeatResponse, (v, resp) {
-    match v {
-        Ok(txn_status) => {
-            if let TxnStatus::Uncommitted { lock, .. } = txn_status {
-                resp.set_lock_ttl(lock.ttl);
-            } else {
-                unreachable!();
-            }
+}
+
+fn future_pessimistic_rollback<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: PessimisticRollbackRequest,
+) -> impl Future<Output = ServerResult<PessimisticRollbackResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<Vec<StorageResult<()>>>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = PessimisticRollbackResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            resp.set_errors(extract_key_errors(v).into());
         }
-        Err(e) => resp.set_error(extract_key_error(&e)),
+        Ok(resp)
     }
-});
-txn_command_future!(future_check_txn_status, CheckTxnStatusRequest, CheckTxnStatusResponse,
-    (v, resp) {
-        match v {
-            Ok(txn_status) => match txn_status {
-                TxnStatus::RolledBack => resp.set_action(Action::NoAction),
-                TxnStatus::TtlExpire => resp.set_action(Action::TtlExpireRollback),
-                TxnStatus::LockNotExist => resp.set_action(Action::LockNotExistRollback),
-                TxnStatus::Committed { commit_ts } => {
+}
+
+fn future_batch_rollback<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: BatchRollbackRequest,
+) -> impl Future<Output = ServerResult<BatchRollbackResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<()>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = BatchRollbackResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            if let Err(e) = v {
+                resp.set_error(extract_key_error(&e));
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_resolve_lock<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: ResolveLockRequest,
+) -> impl Future<Output = ServerResult<ResolveLockResponse>> {
+    {}
+    let (cb, f) = paired_future_callback::<StorageResult<()>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = ResolveLockResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            if let Err(e) = v {
+                resp.set_error(extract_key_error(&e));
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_commit<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: CommitRequest,
+) -> impl Future<Output = ServerResult<CommitResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<TxnStatus>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = CommitResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(TxnStatus::Committed { commit_ts }) => {
                     resp.set_commit_version(commit_ts.into_inner())
                 }
-                TxnStatus::Uncommitted { lock, min_commit_ts_pushed } => {
-                    if min_commit_ts_pushed {
-                        resp.set_action(Action::MinCommitTsPushed);
-                    }
-                    resp.set_lock_ttl(lock.ttl);
-                    let primary = lock.primary.clone();
-                    resp.set_lock_info(lock.into_lock_info(primary));
+                Ok(_) => unreachable!(),
+                Err(e) => resp.set_error(extract_key_error(&e)),
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_cleanup<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: CleanupRequest,
+) -> impl Future<Output = ServerResult<CleanupResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<()>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = CleanupResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            if let Err(e) = v {
+                if let Some(ts) = extract_committed(&e) {
+                    resp.set_commit_version(ts.into_inner());
+                } else {
+                    resp.set_error(extract_key_error(&e));
                 }
-            },
-            Err(e) => resp.set_error(extract_key_error(&e)),
+            };
         }
-});
-txn_command_future!(future_check_secondary_locks, CheckSecondaryLocksRequest, CheckSecondaryLocksResponse, (status, resp) {
-    match status {
-        Ok(SecondaryLocksStatus::Locked(locks)) => {
-            resp.set_locks(locks.into());
-        },
-        Ok(SecondaryLocksStatus::Committed(ts)) => {
-            resp.set_commit_ts(ts.into_inner());
-        },
-        Ok(SecondaryLocksStatus::RolledBack) => {},
-        Err(e) => resp.set_error(extract_key_error(&e)),
+        Ok(resp)
     }
-});
-txn_command_future!(future_scan_lock, ScanLockRequest, ScanLockResponse, (v, resp) {
-    match v {
-        Ok(locks) => resp.set_locks(locks.into()),
-        Err(e) => resp.set_error(extract_key_error(&e)),
-    }
-});
-txn_command_future!(future_mvcc_get_by_key, MvccGetByKeyRequest, MvccGetByKeyResponse, (v, resp) {
-    match v {
-        Ok(mvcc) => resp.set_info(mvcc.into_proto()),
-        Err(e) => resp.set_error(format!("{}", e)),
-    }
-});
-txn_command_future!(future_mvcc_get_by_start_ts, MvccGetByStartTsRequest, MvccGetByStartTsResponse, (v, resp) {
-    match v {
-        Ok(Some((k, vv))) => {
-            resp.set_key(k.into_raw().unwrap());
-            resp.set_info(vv.into_proto());
+}
+
+fn future_txn_heart_beat<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: TxnHeartBeatRequest,
+) -> impl Future<Output = ServerResult<TxnHeartBeatResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<TxnStatus>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = TxnHeartBeatResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(txn_status) => {
+                    if let TxnStatus::Uncommitted { lock, .. } = txn_status {
+                        resp.set_lock_ttl(lock.ttl);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                Err(e) => resp.set_error(extract_key_error(&e)),
+            };
         }
-        Ok(None) => {
-            resp.set_info(Default::default());
-        }
-        Err(e) => resp.set_error(format!("{}", e)),
+        Ok(resp)
     }
-});
+}
+
+fn future_check_txn_status<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: CheckTxnStatusRequest,
+) -> impl Future<Output = ServerResult<CheckTxnStatusResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<TxnStatus>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = CheckTxnStatusResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(txn_status) => match txn_status {
+                    TxnStatus::RolledBack => resp.set_action(Action::NoAction),
+                    TxnStatus::TtlExpire => resp.set_action(Action::TtlExpireRollback),
+                    TxnStatus::LockNotExist => resp.set_action(Action::LockNotExistRollback),
+                    TxnStatus::Committed { commit_ts } => {
+                        resp.set_commit_version(commit_ts.into_inner())
+                    }
+                    TxnStatus::Uncommitted {
+                        lock,
+                        min_commit_ts_pushed,
+                    } => {
+                        if min_commit_ts_pushed {
+                            resp.set_action(Action::MinCommitTsPushed);
+                        }
+                        resp.set_lock_ttl(lock.ttl);
+                        let primary = lock.primary.clone();
+                        resp.set_lock_info(lock.into_lock_info(primary));
+                    }
+                },
+                Err(e) => resp.set_error(extract_key_error(&e)),
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_check_secondary_locks<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: CheckSecondaryLocksRequest,
+) -> impl Future<Output = ServerResult<CheckSecondaryLocksResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<SecondaryLocksStatus>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let status = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = CheckSecondaryLocksResponse::default();
+        if let Some(err) = extract_region_error(&status) {
+            resp.set_region_error(err);
+        } else {
+            match status {
+                Ok(SecondaryLocksStatus::Locked(locks)) => {
+                    resp.set_locks(locks.into());
+                }
+                Ok(SecondaryLocksStatus::Committed(ts)) => {
+                    resp.set_commit_ts(ts.into_inner());
+                }
+                Ok(SecondaryLocksStatus::RolledBack) => {}
+                Err(e) => resp.set_error(extract_key_error(&e)),
+            }
+        }
+        Ok(resp)
+    }
+}
+
+fn future_scan_lock<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: ScanLockRequest,
+) -> impl Future<Output = ServerResult<ScanLockResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<Vec<LockInfo>>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = ScanLockResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(locks) => resp.set_locks(locks.into()),
+                Err(e) => resp.set_error(extract_key_error(&e)),
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_mvcc_get_by_key<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: MvccGetByKeyRequest,
+) -> impl Future<Output = ServerResult<MvccGetByKeyResponse>> {
+    let (cb, f) = paired_future_callback::<StorageResult<crate::storage::MvccInfo>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = MvccGetByKeyResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(mvcc) => resp.set_info(mvcc.into_proto()),
+                Err(e) => resp.set_error(format!("{}", e)),
+            };
+        }
+        Ok(resp)
+    }
+}
+
+fn future_mvcc_get_by_start_ts<E: Engine, L: LockManager>(
+    storage: &Storage<E, L>,
+    req: MvccGetByStartTsRequest,
+) -> impl Future<Output = ServerResult<MvccGetByStartTsResponse>> {
+    let (cb, f) =
+        paired_future_callback::<StorageResult<Option<(Key, crate::storage::MvccInfo)>>>();
+    let res = storage.sched_txn_command(req.into(), cb);
+    async move {
+        let v = match res {
+            Err(e) => Err(e),
+            Ok(_) => f.await?,
+        };
+        let mut resp = MvccGetByStartTsResponse::default();
+        if let Some(err) = extract_region_error(&v) {
+            resp.set_region_error(err);
+        } else {
+            match v {
+                Ok(Some((k, vv))) => {
+                    resp.set_key(k.into_raw().unwrap());
+                    resp.set_info(vv.into_proto());
+                }
+                Ok(None) => {
+                    resp.set_info(Default::default());
+                }
+                Err(e) => resp.set_error(format!("{}", e)),
+            };
+        }
+        Ok(resp)
+    }
+}
 
 #[cfg(feature = "protobuf-codec")]
 pub mod batch_commands_response {
@@ -1758,6 +1968,7 @@ pub use kvproto::tikvpb::batch_commands_request;
 pub use kvproto::tikvpb::batch_commands_response;
 
 struct BatchRespCollector;
+
 impl BatchCollector<BatchCommandsResponse, (u64, batch_commands_response::Response)>
     for BatchRespCollector
 {

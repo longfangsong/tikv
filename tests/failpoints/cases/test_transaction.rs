@@ -6,9 +6,9 @@ use std::{sync::mpsc::channel, thread, time::Duration};
 use storage::mvcc::{self, Error as MvccError, ErrorInner as MvccErrorInner};
 use tikv::storage::txn::tests::{must_prewrite_put, must_prewrite_put_err};
 use tikv::storage::txn::{commands, Error as TxnError, ErrorInner as TxnErrorInner};
-use tikv::storage::TestEngineBuilder;
 use tikv::storage::{self, txn::tests::must_commit};
 use tikv::storage::{lock_manager::DummyLockManager, TestStorageBuilder};
+use tikv::storage::{PrewriteResult, TestEngineBuilder};
 use txn_types::{Key, Mutation, TimeStamp};
 
 #[test]
@@ -38,7 +38,7 @@ fn test_atomic_getting_max_ts_and_storing_memory_lock() {
     // sleep a while between getting max ts and store the lock in memory
     fail::cfg("before-set-lock-in-memory", "sleep(500)").unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![Mutation::Put((Key::from_raw(b"k"), b"v".to_vec()))],
                 b"k".to_vec(),
@@ -91,7 +91,7 @@ fn test_snapshot_must_be_later_than_updating_max_ts() {
     fail::remove("after-snapshot");
     let (prewrite_tx, prewrite_rx) = channel();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![Mutation::Put((Key::from_raw(b"j"), b"v".to_vec()))],
                 b"j".to_vec(),
@@ -133,7 +133,7 @@ fn test_update_max_ts_before_scan_memory_locks() {
 
     let (prewrite_tx, prewrite_rx) = channel();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![Mutation::Put((Key::from_raw(b"k"), b"v".to_vec()))],
                 b"k".to_vec(),
@@ -182,7 +182,7 @@ macro_rules! lock_release_test {
 
             let (prewrite_tx, prewrite_rx) = channel();
             storage
-                .sched_txn_command(
+                .sched_txn_command::<PrewriteResult>(
                     commands::Prewrite::new(
                         vec![Mutation::Put((key.clone(), b"v".to_vec()))],
                         b"k".to_vec(),
@@ -256,7 +256,7 @@ fn test_no_memory_locks_after_max_commit_ts_error() {
     fail::cfg("after_prewrite_one_key", "sleep(500)").unwrap();
     let (prewrite_tx, prewrite_rx) = channel();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![
                     Mutation::Put((Key::from_raw(b"k1"), b"v".to_vec())),

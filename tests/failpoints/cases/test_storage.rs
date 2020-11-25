@@ -14,7 +14,7 @@ use test_raftstore::{must_get_equal, must_get_none, new_peer, new_server_cluster
 use tikv::storage::kv::{Error as KvError, ErrorInner as KvErrorInner, SnapContext};
 use tikv::storage::lock_manager::DummyLockManager;
 use tikv::storage::txn::{commands, Error as TxnError, ErrorInner as TxnErrorInner};
-use tikv::storage::{self, test_util::*, *};
+use tikv::storage::{self, test_util::*, Result as StorageResult, *};
 use tikv_util::{collections::HashMap, HandyRwLock};
 use txn_types::Key;
 use txn_types::{Mutation, TimeStamp};
@@ -42,7 +42,7 @@ fn test_scheduler_leader_change_twice() {
     let (prewrite_tx, prewrite_rx) = channel();
     fail::cfg(snapshot_fp, "pause").unwrap();
     storage0
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![Mutation::Put((Key::from_raw(b"k"), b"v".to_vec()))],
                 b"k".to_vec(),
@@ -221,7 +221,7 @@ fn test_pipelined_pessimistic_lock() {
         // receive the error when pipelined locking is disabled.
         fail::cfg(rockskv_write_modifies_fp, "return()").unwrap();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<StorageResult<PessimisticLockRes>>(
                 new_acquire_pessimistic_lock_command(
                     vec![(Key::from_raw(b"key"), false)],
                     10,
@@ -251,7 +251,7 @@ fn test_pipelined_pessimistic_lock() {
     fail::cfg(rockskv_write_modifies_fp, "return()").unwrap();
     fail::cfg(scheduler_async_write_finish_fp, "pause").unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<StorageResult<PessimisticLockRes>>(
             new_acquire_pessimistic_lock_command(vec![(key.clone(), false)], 10, 10, true),
             expect_pessimistic_lock_res_callback(
                 tx.clone(),
@@ -263,7 +263,7 @@ fn test_pipelined_pessimistic_lock() {
     fail::remove(rockskv_write_modifies_fp);
     fail::remove(scheduler_async_write_finish_fp);
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::PrewritePessimistic::new(
                 vec![(Mutation::Put((key.clone(), val.clone())), true)],
                 key.to_raw().unwrap(),
@@ -282,7 +282,7 @@ fn test_pipelined_pessimistic_lock() {
         .unwrap();
     rx.recv().unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<TxnStatus>(
             commands::Commit::new(vec![key.clone()], 10.into(), 20.into(), Context::default()),
             expect_ok_callback(tx.clone(), 0),
         )
@@ -292,7 +292,7 @@ fn test_pipelined_pessimistic_lock() {
     // Should report failure if storage fails to schedule write request to engine.
     fail::cfg(rockskv_async_write_fp, "return()").unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<StorageResult<PessimisticLockRes>>(
             new_acquire_pessimistic_lock_command(vec![(key.clone(), false)], 30, 30, true),
             expect_fail_callback(tx.clone(), 0, |_| ()),
         )
@@ -304,7 +304,7 @@ fn test_pipelined_pessimistic_lock() {
     fail::cfg(scheduler_async_write_finish_fp, "pause").unwrap();
     for blocked in &[false, true] {
         storage
-            .sched_txn_command(
+            .sched_txn_command::<StorageResult<PessimisticLockRes>>(
                 new_acquire_pessimistic_lock_command(vec![(key.clone(), false)], 40, 40, true),
                 expect_pessimistic_lock_res_callback(
                     tx.clone(),
@@ -327,7 +327,7 @@ fn test_pipelined_pessimistic_lock() {
     // Pipelined write is finished before async write.
     fail::cfg(scheduler_async_write_finish_fp, "pause").unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<StorageResult<PessimisticLockRes>>(
             new_acquire_pessimistic_lock_command(vec![(key.clone(), false)], 50, 50, true),
             expect_pessimistic_lock_res_callback(
                 tx.clone(),
@@ -343,7 +343,7 @@ fn test_pipelined_pessimistic_lock() {
     // invoked. In this case it should still be continued properly.
     fail::cfg(before_pipelined_write_finish_fp, "return()").unwrap();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<StorageResult<PessimisticLockRes>>(
             new_acquire_pessimistic_lock_command(
                 vec![(key.clone(), false), (Key::from_raw(b"nonexist"), false)],
                 60,
@@ -395,7 +395,7 @@ fn test_async_commit_prewrite_with_stale_max_ts() {
         // prewrite
         let (prewrite_tx, prewrite_rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::Prewrite::new(
                     vec![Mutation::Put((Key::from_raw(b"k1"), b"v".to_vec()))],
                     b"k1".to_vec(),
@@ -426,7 +426,7 @@ fn test_async_commit_prewrite_with_stale_max_ts() {
         // pessimistic prewrite
         let (prewrite_tx, prewrite_rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::PrewritePessimistic::new(
                     vec![(Mutation::Put((Key::from_raw(b"k1"), b"v".to_vec())), true)],
                     b"k1".to_vec(),
@@ -506,7 +506,7 @@ fn test_async_apply_prewrite_impl<E: Engine>(
     if need_lock {
         let (tx, rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<StorageResult<PessimisticLockRes>>(
                 commands::AcquirePessimisticLock::new(
                     vec![(Key::from_raw(key), false)],
                     key.to_vec(),
@@ -534,7 +534,7 @@ fn test_async_apply_prewrite_impl<E: Engine>(
     let secondaries = if use_async_commit { Some(vec![]) } else { None };
     if !is_pessimistic {
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::Prewrite::new(
                     vec![Mutation::Put((Key::from_raw(key), value.to_vec()))],
                     key.to_vec(),
@@ -553,7 +553,7 @@ fn test_async_apply_prewrite_impl<E: Engine>(
             .unwrap();
     } else {
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::PrewritePessimistic::new(
                     vec![(
                         Mutation::Put((Key::from_raw(key), value.to_vec())),
@@ -598,7 +598,7 @@ fn test_async_apply_prewrite_impl<E: Engine>(
         // Commit command will be blocked.
         let (tx, rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<TxnStatus>(
                 commands::Commit::new(
                     vec![Key::from_raw(key)],
                     start_ts,
@@ -636,7 +636,7 @@ fn test_async_apply_prewrite_impl<E: Engine>(
         let commit_ts = commit_ts.unwrap().into();
         let (tx, rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<TxnStatus>(
                 commands::Commit::new(vec![Key::from_raw(key)], start_ts, commit_ts, ctx.clone()),
                 Box::new(move |r| tx.send(r).unwrap()),
             )
@@ -786,7 +786,7 @@ fn test_async_apply_prewrite_fallback() {
     let (key, value) = (b"k1", b"v1");
     let (tx, rx) = channel();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<PrewriteResult>(
             commands::Prewrite::new(
                 vec![Mutation::Put((Key::from_raw(key), value.to_vec()))],
                 key.to_vec(),
@@ -818,7 +818,7 @@ fn test_async_apply_prewrite_fallback() {
 
     let (tx, rx) = channel();
     storage
-        .sched_txn_command(
+        .sched_txn_command::<TxnStatus>(
             commands::Commit::new(vec![Key::from_raw(key)], 10.into(), res.min_commit_ts, ctx),
             Box::new(move |r| tx.send(r).unwrap()),
         )
@@ -842,7 +842,7 @@ fn test_async_apply_prewrite_1pc_impl<E: Engine>(
     if is_pessimistic {
         let (tx, rx) = channel();
         storage
-            .sched_txn_command(
+            .sched_txn_command::<StorageResult<PessimisticLockRes>>(
                 commands::AcquirePessimisticLock::new(
                     vec![(Key::from_raw(key), false)],
                     key.to_vec(),
@@ -869,7 +869,7 @@ fn test_async_apply_prewrite_1pc_impl<E: Engine>(
     let (tx, rx) = channel();
     if !is_pessimistic {
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::Prewrite::new(
                     vec![Mutation::Put((Key::from_raw(key), value.to_vec()))],
                     key.to_vec(),
@@ -888,7 +888,7 @@ fn test_async_apply_prewrite_1pc_impl<E: Engine>(
             .unwrap();
     } else {
         storage
-            .sched_txn_command(
+            .sched_txn_command::<PrewriteResult>(
                 commands::PrewritePessimistic::new(
                     vec![(Mutation::Put((Key::from_raw(key), value.to_vec())), true)],
                     key.to_vec(),
