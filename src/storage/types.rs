@@ -155,6 +155,20 @@ impl SecondaryLocksStatus {
 
 macro_rules! storage_callback {
     ($($variant: ident ( $cb_ty: ty ) $result_variant: pat => $result: expr,)*) => {
+        pub enum CommandScheduleResult {
+            $($variant($cb_ty),)*
+        }
+
+        impl From<ProcessResult> for Result<CommandScheduleResult> {
+            fn from(pr: ProcessResult) -> Self {
+                match pr {
+                    $($result_variant => Ok(CommandScheduleResult::$variant($result)),)*
+                    ProcessResult::Failed { err } => Err(err),
+                    _ => panic!("process result mismatch"),
+                }
+            }
+        }
+
         pub enum StorageCallback {
             $($variant(Callback<$cb_ty>),)*
         }
