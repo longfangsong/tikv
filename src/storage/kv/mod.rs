@@ -6,6 +6,7 @@
 
 mod btree_engine;
 mod cursor;
+mod mock_engine;
 mod perf_context;
 mod rocksdb_engine;
 mod stats;
@@ -57,7 +58,7 @@ impl CbContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Modify {
     Delete(CfName, Key),
     Put(CfName, Key, Value),
