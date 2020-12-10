@@ -16,7 +16,6 @@ jobs:
         uses: ATiltedTree/setup-rust@v1
         with:
           rust-version: nightly
-          components: clippy
       - run: |
           make build
   can_test:
@@ -31,6 +30,5 @@ jobs:
         uses: ATiltedTree/setup-rust@v1
         with:
           rust-version: nightly
-          components: clippy
       - run: |
           cargo -Zpackage-features test --no-run --workspace --exclude fuzzer-honggfuzz --exclude fuzzer-afl --exclude fuzzer-libfuzzer
