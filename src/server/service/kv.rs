@@ -1044,6 +1044,9 @@ fn handle_batch_commands_request<E: Engine, L: LockManager>(
 
     macro_rules! handle_cmd {
         ($($cmd: ident, $future_fn: ident ( $($arg: expr),* ), $metric_name: ident;)*) => {
+            if let Some(batch_commands_request::request::Cmd::Coprocessor(req)) = &req.cmd {
+                info!("-------{:?}", req.context.clone().unwrap().stale_read);
+            }
             match req.cmd {
                 None => {
                     // For some invalid requests.
