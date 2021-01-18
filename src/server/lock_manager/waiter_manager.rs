@@ -29,6 +29,7 @@ use futures::task::{Context, Poll};
 use kvproto::deadlock::WaitForEntry;
 use prometheus::HistogramTimer;
 use tikv_util::config::ReadableDuration;
+use tikv_util::mpsc::{Receiver, Sender};
 use tikv_util::timer::GLOBAL_TIMER_HANDLE;
 use tokio::task::spawn_local;
 
@@ -125,6 +126,8 @@ pub enum Task {
     },
     #[cfg(any(test, feature = "testexport"))]
     Validate(Box<dyn FnOnce(ReadableDuration, ReadableDuration) + Send>),
+
+    DumpAll(Sender<Vec<kvproto::kvrpcpb::Wait>>),
 }
 
 /// Debug for task.
@@ -151,6 +154,7 @@ impl Display for Task {
             ),
             #[cfg(any(test, feature = "testexport"))]
             Task::Validate(_) => write!(f, "validate waiter manager config"),
+            Task::DumpAll(_) => write!(f, "Dump all waiters"),
         }
     }
 }
@@ -173,6 +177,16 @@ pub(crate) struct Waiter {
     pub(crate) lock: Lock,
     delay: Delay,
     _lifetime_timer: HistogramTimer,
+}
+
+impl<'a> From<&'a Waiter> for kvproto::kvrpcpb::Wait {
+    fn from(waiter: &'a Waiter) -> Self {
+        let mut result = kvproto::kvrpcpb::Wait::default();
+        result.set_transaction_id(waiter.start_ts.into_inner());
+        result.set_lock_ts(waiter.lock.ts.into_inner());
+        result.set_waiting_for_hash(waiter.lock.hash);
+        result
+    }
 }
 
 impl Waiter {
@@ -373,6 +387,15 @@ impl WaitTable {
             })
             .collect()
     }
+
+    pub fn dump_all(&self) -> Vec<kvproto::kvrpcpb::Wait> {
+        self.wait_table
+            .values()
+            .map(|it| it.iter())
+            .flatten()
+            .map(|it| it.into())
+            .collect()
+    }
 }
 
 #[derive(Clone)]
@@ -442,6 +465,10 @@ impl Scheduler {
     #[cfg(any(test, feature = "testexport"))]
     pub fn validate(&self, f: Box<dyn FnOnce(ReadableDuration, ReadableDuration) + Send>) {
         self.notify_scheduler(Task::Validate(f));
+    }
+
+    pub fn dump_all(&self, tx: Sender<Vec<kvproto::kvrpcpb::Wait>>) {
+        self.notify_scheduler(Task::DumpAll(tx));
     }
 }
 
@@ -556,6 +583,10 @@ impl WaiterManager {
             "wake_up_delay_duration" => self.wake_up_delay_duration.to_string()
         );
     }
+
+    pub fn dump_wait_table(&self) -> Vec<kvproto::kvrpcpb::Wait> {
+        self.wait_table.borrow().dump_all()
+    }
 }
 
 impl FutureRunnable<Task> for WaiterManager {
@@ -597,6 +628,7 @@ impl FutureRunnable<Task> for WaiterManager {
                 self.default_wait_for_lock_timeout,
                 self.wake_up_delay_duration,
             ),
+            Task::DumpAll(tx) => tx.send(self.dump_wait_table()).unwrap(),
         }
     }
 }

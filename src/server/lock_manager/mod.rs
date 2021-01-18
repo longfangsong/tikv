@@ -13,7 +13,7 @@ pub use self::waiter_manager::Scheduler as WaiterMgrScheduler;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 
 use self::deadlock::{Detector, RoleChangeNotifier};
@@ -32,7 +32,9 @@ use engine_rocks::RocksEngine;
 use parking_lot::Mutex;
 use pd_client::PdClient;
 use security::SecurityManager;
+use tikv_util::mpsc::unbounded;
 use tikv_util::worker::FutureWorker;
+use tokio::sync::oneshot;
 use txn_types::TimeStamp;
 
 const DETECTED_SLOTS_NUM: usize = 128;
@@ -277,6 +279,12 @@ impl LockManagerTrait for LockManager {
 
     fn has_waiter(&self) -> bool {
         self.waiter_count.load(Ordering::SeqCst) > 0
+    }
+
+    fn dump(&self) -> Vec<kvproto::kvrpcpb::Wait> {
+        let (tx, rx) = unbounded();
+        self.waiter_mgr_scheduler.dump_all(tx);
+        rx.recv().unwrap()
     }
 }
 

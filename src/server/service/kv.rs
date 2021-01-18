@@ -265,6 +265,18 @@ impl<T: RaftStoreRouter<RocksEngine> + 'static, E: Engine, L: LockManager> Tikv
         RawDeleteRangeResponse
     );
 
+    fn get_all_waiting(
+        &mut self,
+        ctx: RpcContext<'_>,
+        req: GetAllWaitingRequest,
+        sink: UnarySink<GetAllWaitingResponse>,
+    ) {
+        let result = self.storage.sched.inner.lock_mgr.dump();
+        let mut resp = GetAllWaitingResponse::default();
+        resp.set_waiting(result.into());
+        ctx.spawn(sink.success(resp).unwrap_or_else(|_| panic!("_")));
+    }
+
     fn kv_import(&mut self, _: RpcContext<'_>, _: ImportRequest, _: UnarySink<ImportResponse>) {
         unimplemented!();
     }

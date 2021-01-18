@@ -139,7 +139,7 @@ impl TaskContext {
     }
 }
 
-struct SchedulerInner<L: LockManager> {
+pub struct SchedulerInner<L: LockManager> {
     // slot_id -> { cid -> `TaskContext` } in the slot.
     task_slots: Vec<CachePadded<Mutex<HashMap<u64, TaskContext>>>>,
 
@@ -160,7 +160,7 @@ struct SchedulerInner<L: LockManager> {
     // used to control write flow
     running_write_bytes: CachePadded<AtomicUsize>,
 
-    lock_mgr: L,
+    pub lock_mgr: L,
 
     concurrency_manager: ConcurrencyManager,
 
@@ -243,7 +243,7 @@ impl<L: LockManager> SchedulerInner<L> {
 pub struct Scheduler<E: Engine, L: LockManager> {
     // `engine` is `None` means currently the program is in scheduler worker threads.
     engine: Option<E>,
-    inner: Arc<SchedulerInner<L>>,
+    pub inner: Arc<SchedulerInner<L>>,
 }
 
 unsafe impl<E: Engine, L: LockManager> Send for Scheduler<E, L> {}

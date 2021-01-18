@@ -113,7 +113,7 @@ pub struct Storage<E: Engine, L: LockManager> {
     // TODO: Too many Arcs, would be slow when clone.
     engine: E,
 
-    sched: TxnScheduler<E, L>,
+    pub sched: TxnScheduler<E, L>,
 
     /// The thread pool used to run most read operations.
     read_pool: ReadPoolHandle,
@@ -5141,6 +5141,10 @@ mod tests {
 
         fn has_waiter(&self) -> bool {
             self.has_waiter.load(Ordering::Relaxed)
+        }
+
+        fn dump(&self) -> Vec<kvproto::kvrpcpb::Wait> {
+            unimplemented!()
         }
     }
 

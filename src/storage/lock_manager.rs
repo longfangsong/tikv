@@ -79,6 +79,8 @@ pub trait LockManager: Clone + Send + 'static {
     fn has_waiter(&self) -> bool {
         true
     }
+
+    fn dump(&self) -> Vec<kvproto::kvrpcpb::Wait>;
 }
 
 // For test
@@ -104,5 +106,9 @@ impl LockManager for DummyLockManager {
         _commit_ts: TimeStamp,
         _is_pessimistic_txn: bool,
     ) {
+    }
+
+    fn dump(&self) -> Vec<kvproto::kvrpcpb::Wait> {
+        unimplemented!()
     }
 }
